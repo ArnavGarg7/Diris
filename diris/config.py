@@ -1,0 +1,39 @@
+"""Configuration loaded from environment / .env file."""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:  # dotenv is optional; env vars still work without it
+    pass
+
+
+@dataclass(frozen=True)
+class Settings:
+    api_key: str | None = os.getenv("ANTHROPIC_API_KEY")
+    model: str = os.getenv("DIRIS_MODEL", "claude-opus-5")
+    store_dir: Path = Path(os.getenv("DIRIS_STORE_DIR", "data/store"))
+
+    # Chunking
+    chunk_chars: int = 1400          # target characters per chunk
+    chunk_overlap: int = 200         # overlap between consecutive chunks
+
+    # Retrieval
+    vector_top_k: int = 6
+    graph_hops: int = 1              # neighborhood radius around matched entities
+
+    def require_key(self) -> str:
+        if not self.api_key:
+            raise RuntimeError(
+                "ANTHROPIC_API_KEY is not set. Copy .env.example to .env and add "
+                "your key, or export ANTHROPIC_API_KEY in your shell."
+            )
+        return self.api_key
+
+
+settings = Settings()

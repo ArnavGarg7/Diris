@@ -1,0 +1,12 @@
+# Core (required)
+anthropic>=0.40.0
+numpy>=1.26
+python-dotenv>=1.0
+pydantic>=2.0
+
+# Optional document loaders — install if you need these formats:
+#   pip install pypdf python-docx beautifulsoup4
+# The system runs on TXT/MD/HTML without them; PDF/DOCX degrade gracefully.
+pypdf>=4.0
+python-docx>=1.1
+beautifulsoup4>=4.12
