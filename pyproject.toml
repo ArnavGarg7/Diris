@@ -1,0 +1,9 @@
+# Project tooling configuration.
+# (No [project]/build backend yet — DIRIS runs as a source package via `python -m diris`.
+#  A packaging setup can be added later if we publish it.)
+
+[tool.pytest.ini_options]
+# Put the repo root on sys.path so tests can `import diris` without installation.
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
