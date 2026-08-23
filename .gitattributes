@@ -1,0 +1,8 @@
+# Normalize line endings: store text as LF in the repo, avoid CRLF churn on Windows.
+* text=auto eol=lf
+
+# Treat these as binary (no line-ending conversion, no diff).
+*.docx binary
+*.pdf  binary
+*.png  binary
+*.jpg  binary
