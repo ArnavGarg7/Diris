@@ -1,11 +1,21 @@
-# Core (required)
+# === Core pipeline (required) ===
 anthropic>=0.40.0
 numpy>=1.26
 python-dotenv>=1.0
 pydantic>=2.0
 
-# Optional document loaders — install if you need these formats:
-#   pip install pypdf python-docx beautifulsoup4
+# === Web API + persistence (Milestone 1) ===
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlalchemy>=2.0
+alembic>=1.13
+pymysql>=1.1            # pure-Python MySQL driver (no C build on Windows)
+argon2-cffi>=23.1       # password hashing
+pyjwt>=2.8              # JWT access tokens
+python-multipart>=0.0.9 # OAuth2 login form parsing
+email-validator>=2.1    # validates EmailStr
+
+# === Optional document loaders ===
 # The system runs on TXT/MD/HTML without them; PDF/DOCX degrade gracefully.
 pypdf>=4.0
 python-docx>=1.1
