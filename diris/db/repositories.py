@@ -5,10 +5,16 @@ testable and the storage swappable.
 """
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .models import Document, DocumentMetadata, User
+from .models import (
+    Chunk,
+    Document,
+    DocumentMetadata,
+    DocumentProcessingStatus,
+    User,
+)
 
 
 class UserRepository:
@@ -80,5 +86,86 @@ class DocumentRepository:
         ).scalar_one_or_none()
 
     def delete(self, document: Document) -> None:
-        self.db.delete(document)  # ORM cascade removes metadata rows too
+        self.db.delete(document)  # ORM cascade removes metadata/chunks/status rows too
         self.db.commit()
+
+
+class ChunkRepository:
+    """Chunk persistence. Bulk inserts are atomic (one transaction)."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def add_chunks(self, document_id: int, texts: list[str]) -> list[Chunk]:
+        """Insert all chunks for a document in a single transaction (all-or-nothing)."""
+        chunks = [
+            Chunk(
+                document_id=document_id,
+                chunk_index=i,
+                content=text,
+                char_count=len(text),
+            )
+            for i, text in enumerate(texts)
+        ]
+        self.db.add_all(chunks)
+        self.db.commit()
+        for chunk in chunks:
+            self.db.refresh(chunk)
+        return chunks
+
+    def list_for_document(self, document_id: int) -> list[Chunk]:
+        return list(
+            self.db.execute(
+                select(Chunk)
+                .where(Chunk.document_id == document_id)
+                .order_by(Chunk.chunk_index)
+            ).scalars()
+        )
+
+    def delete_for_document(self, document_id: int) -> int:
+        """Remove a document's chunks (used by M13 re-processing). Returns row count."""
+        result = self.db.execute(delete(Chunk).where(Chunk.document_id == document_id))
+        self.db.commit()
+        return result.rowcount or 0
+
+
+class ProcessingStatusRepository:
+    """Records processing transitions and keeps documents.status in sync."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def record(
+        self,
+        document_id: int,
+        status: str,
+        *,
+        stage: str | None = None,
+        message: str | None = None,
+        update_document: bool = True,
+    ) -> DocumentProcessingStatus:
+        """Append a history row and (optionally) update the document's current status.
+
+        Both writes commit together so the denormalized status and the history
+        never disagree.
+        """
+        event = DocumentProcessingStatus(
+            document_id=document_id, status=status, stage=stage, message=message
+        )
+        self.db.add(event)
+        if update_document:
+            document = self.db.get(Document, document_id)
+            if document is not None:
+                document.status = status
+        self.db.commit()
+        self.db.refresh(event)
+        return event
+
+    def history_for_document(self, document_id: int) -> list[DocumentProcessingStatus]:
+        return list(
+            self.db.execute(
+                select(DocumentProcessingStatus)
+                .where(DocumentProcessingStatus.document_id == document_id)
+                .order_by(DocumentProcessingStatus.created_at)
+            ).scalars()
+        )
