@@ -6,6 +6,9 @@
 # --- Generated knowledge base state ---
 data/store/
 
+# --- Uploaded documents (user files) ---
+data/uploads/
+
 # --- Python ---
 __pycache__/
 *.py[cod]

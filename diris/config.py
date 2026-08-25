@@ -37,6 +37,17 @@ class Settings:
     jwt_algorithm: str = os.getenv("DIRIS_JWT_ALG", "HS256")
     jwt_expire_minutes: int = int(os.getenv("DIRIS_JWT_EXPIRE_MINUTES", "60"))
 
+    # Document uploads (Milestone 2)
+    upload_dir: Path = Path(os.getenv("DIRIS_UPLOAD_DIR", "data/uploads"))
+    max_upload_mb: int = int(os.getenv("DIRIS_MAX_UPLOAD_MB", "25"))
+    allowed_extensions: frozenset[str] = frozenset(
+        e.strip().lower()
+        for e in os.getenv(
+            "DIRIS_ALLOWED_EXTENSIONS", ".pdf,.docx,.txt,.md,.html"
+        ).split(",")
+        if e.strip()
+    )
+
     def require_key(self) -> str:
         if not self.api_key:
             raise RuntimeError(

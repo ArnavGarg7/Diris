@@ -23,3 +23,15 @@ class UserOut(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class DocumentOut(BaseModel):
+    # Note: stored_path and user_id are deliberately NOT exposed (internal details).
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    original_filename: str
+    content_type: str
+    size_bytes: int
+    status: str
+    created_at: datetime
