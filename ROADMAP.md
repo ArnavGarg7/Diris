@@ -13,7 +13,8 @@ Before any code is written for a milestone, we pass through a **Learn → Explai
 2. **Explain Back (intern confirms):** the intern explains the key concepts back in their own words and asks questions. **Claude does not start implementing until this happens.** If the explain-back reveals a gap, Claude re-explains before proceeding.
 3. **Implement:** only after the checkpoint — Claude implements *only* this milestone (no future work), following the code-quality and AI/LLM rules.
 4. **Test:** run unit/integration/smoke tests + edge cases; report exactly what was tested and the result.
-5. **Review:** what changed, why, files, new deps, DB/API changes, tests, known limitations, security concerns, technical debt, what to learn, what's next.
+5. **Explain code changes:** Claude walks through the code that was written for this milestone — file by file / component by component — what each piece does, how data flows through it, and the key design decisions. This is a teaching step so the intern can explain the implementation themselves.
+6. **Review:** what changed, why, files, new deps, DB/API changes, tests, known limitations, security concerns, technical debt, what to learn, what's next.
 
 Then: finish, test, **commit**, understand — and only then move to the next milestone. Never build ahead. The system must work after every milestone.
 
