@@ -1,0 +1,26 @@
+"""FastAPI application factory.
+
+Run locally with:
+    uvicorn diris.api.main:app --reload
+Then open http://127.0.0.1:8000/docs for interactive Swagger UI.
+"""
+from __future__ import annotations
+
+from fastapi import FastAPI
+
+from .routers import auth, users
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="DIRIS API", version="0.1.0")
+
+    @app.get("/health", tags=["health"])
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    app.include_router(auth.router)
+    app.include_router(users.router)
+    return app
+
+
+app = create_app()
