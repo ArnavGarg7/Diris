@@ -37,6 +37,10 @@ class Settings:
     jwt_algorithm: str = os.getenv("DIRIS_JWT_ALG", "HS256")
     jwt_expire_minutes: int = int(os.getenv("DIRIS_JWT_EXPIRE_MINUTES", "60"))
 
+    # Vector store / embeddings (Milestone 5)
+    chroma_dir: Path = Path(os.getenv("DIRIS_CHROMA_DIR", "data/chroma"))
+    chroma_collection: str = os.getenv("DIRIS_CHROMA_COLLECTION", "diris_chunks")
+
     # Document uploads (Milestone 2)
     upload_dir: Path = Path(os.getenv("DIRIS_UPLOAD_DIR", "data/uploads"))
     max_upload_mb: int = int(os.getenv("DIRIS_MAX_UPLOAD_MB", "25"))

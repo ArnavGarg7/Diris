@@ -9,6 +9,9 @@ data/store/
 # --- Uploaded documents (user files) ---
 data/uploads/
 
+# --- ChromaDB vector store ---
+data/chroma/
+
 # --- Python ---
 __pycache__/
 *.py[cod]
