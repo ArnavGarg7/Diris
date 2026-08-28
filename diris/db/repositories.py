@@ -327,3 +327,10 @@ class RelationshipRepository:
                 select(Relationship).where(Relationship.user_id == user_id)
             ).scalars()
         )
+
+    def for_document(self, document_id: int) -> list[Relationship]:
+        return list(
+            self.db.execute(
+                select(Relationship).where(Relationship.document_id == document_id)
+            ).scalars()
+        )
