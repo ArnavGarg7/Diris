@@ -60,3 +60,55 @@ class SearchResultOut(BaseModel):
     document_id: int | None
     score: float
     content: str
+
+
+class RelationshipOut(BaseModel):
+    id: int
+    source_entity_id: int
+    target_entity_id: int
+    type: str
+    evidence: str | None
+    confidence: float
+
+    @classmethod
+    def from_relationship(cls, rel) -> "RelationshipOut":
+        return cls(
+            id=rel.id,
+            source_entity_id=rel.source_entity_id,
+            target_entity_id=rel.target_entity_id,
+            type=rel.type,
+            evidence=rel.evidence,
+            confidence=rel.confidence,
+        )
+
+
+class EntityOut(BaseModel):
+    id: int
+    canonical_name: str
+    type: str
+    description: str | None
+    aliases: list[str]
+    mention_count: int
+
+    @classmethod
+    def from_entity(cls, entity) -> "EntityOut":
+        return cls(
+            id=entity.id,
+            canonical_name=entity.canonical_name,
+            type=entity.type,
+            description=entity.description,
+            aliases=[a.alias for a in entity.aliases],
+            mention_count=len(entity.mentions),
+        )
+
+
+class EntityDetailOut(EntityOut):
+    relationships: list[RelationshipOut]
+
+    @classmethod
+    def from_entity_with_relationships(cls, entity, relationships) -> "EntityDetailOut":
+        base = EntityOut.from_entity(entity)
+        return cls(
+            **base.model_dump(),
+            relationships=[RelationshipOut.from_relationship(r) for r in relationships],
+        )
