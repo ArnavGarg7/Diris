@@ -75,12 +75,30 @@ def process_document(document_id: int) -> None:
                     ],
                 )
 
-            status_repo.record(
-                document_id, "done", stage="embed", message=f"{len(chunks)} chunks"
-            )
         except Exception as exc:  # noqa: BLE001 — a bad file must not crash the worker
             log.exception("Processing failed for document %s", document_id)
             db.rollback()  # clear the failed transaction so we can record status
             status_repo.record(
                 document_id, "failed", stage="processing", message=str(exc)[:500]
+            )
+            return
+
+        # Core succeeded: the document is chunked + searchable. Entity extraction
+        # is best-effort enrichment — its failure (e.g. no API key) must NOT mark
+        # the document failed, since chunks/embeddings are already usable.
+        try:
+            from .extraction import extract_document
+
+            counts = extract_document(db, document_id)
+            status_repo.record(
+                document_id, "done", stage="extract",
+                message=f"{len(chunks)} chunks, {counts['entities']} entities, "
+                f"{counts['relationships']} relationships",
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Entity extraction failed for document %s", document_id)
+            db.rollback()
+            status_repo.record(
+                document_id, "done", stage="extract_failed",
+                message=f"{len(chunks)} chunks; extraction error: {str(exc)[:400]}",
             )
