@@ -41,6 +41,15 @@ class Settings:
     chroma_dir: Path = Path(os.getenv("DIRIS_CHROMA_DIR", "data/chroma"))
     chroma_collection: str = os.getenv("DIRIS_CHROMA_COLLECTION", "diris_chunks")
 
+    # Entity extraction & resolution (Milestone 6)
+    extraction_model: str = os.getenv("DIRIS_EXTRACTION_MODEL", "claude-sonnet-5")
+    chroma_entity_collection: str = os.getenv(
+        "DIRIS_CHROMA_ENTITY_COLLECTION", "diris_entities"
+    )
+    # Cosine-similarity threshold for merging two entity names via embeddings.
+    # High on purpose: we prefer under-merging (a missed merge) to a wrong merge.
+    resolution_threshold: float = float(os.getenv("DIRIS_RESOLUTION_THRESHOLD", "0.83"))
+
     # Document uploads (Milestone 2)
     upload_dir: Path = Path(os.getenv("DIRIS_UPLOAD_DIR", "data/uploads"))
     max_upload_mb: int = int(os.getenv("DIRIS_MAX_UPLOAD_MB", "25"))
