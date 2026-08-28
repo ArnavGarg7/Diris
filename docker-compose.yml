@@ -1,6 +1,6 @@
-# Local MySQL for development. Start it with:
+# Local dev services (MySQL + Neo4j). Start with:
 #   docker compose up -d
-# Credentials here must match DIRIS_DATABASE_URL in your .env.
+# Credentials here must match the DIRIS_* values in your .env.
 services:
   mysql:
     image: mysql:8.4
@@ -22,5 +22,24 @@ services:
       timeout: 5s
       retries: 20
 
+  neo4j:
+    image: neo4j:5-community
+    container_name: diris-neo4j
+    restart: unless-stopped
+    environment:
+      # user/password must match DIRIS_NEO4J_USER / DIRIS_NEO4J_PASSWORD
+      NEO4J_AUTH: neo4j/dirispassword
+    ports:
+      - "7474:7474"   # HTTP browser UI
+      - "7687:7687"   # Bolt (driver)
+    volumes:
+      - diris_neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p dirispassword 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+
 volumes:
   diris_mysql_data:
+  diris_neo4j_data:

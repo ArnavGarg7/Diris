@@ -102,3 +102,12 @@ def process_document(document_id: int) -> None:
                 document_id, "done", stage="extract_failed",
                 message=f"{len(chunks)} chunks; extraction error: {str(exc)[:400]}",
             )
+
+        # Best-effort: project the resolved graph into Neo4j. Failure here (e.g.
+        # Neo4j down) is logged but does not change the document's status.
+        try:
+            from .graph_projection import project_document
+
+            project_document(db, document_id)
+        except Exception:  # noqa: BLE001
+            log.exception("Neo4j projection failed for document %s", document_id)
