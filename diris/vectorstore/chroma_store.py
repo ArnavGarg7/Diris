@@ -30,9 +30,19 @@ class ChromaVectorStore(VectorStoreBase):
             return
         self.collection.upsert(ids=ids, documents=texts, metadatas=metadatas)
 
+    @staticmethod
+    def _build_where(where: dict | None) -> dict | None:
+        # Chroma requires a single top-level operator; multiple fields must be
+        # combined with $and (e.g. {"$and": [{"user_id": 1}, {"type": "X"}]}).
+        if not where:
+            return None
+        if len(where) == 1:
+            return where
+        return {"$and": [{k: v} for k, v in where.items()]}
+
     def query(self, text: str, top_k: int, where: dict | None = None) -> list[VectorMatch]:
         result = self.collection.query(
-            query_texts=[text], n_results=top_k, where=where or None
+            query_texts=[text], n_results=top_k, where=self._build_where(where)
         )
         # Chroma returns lists-of-lists (one row per query text); we sent one query.
         ids = result["ids"][0]
