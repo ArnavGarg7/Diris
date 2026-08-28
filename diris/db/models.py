@@ -3,7 +3,17 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .session import Base
@@ -135,3 +145,103 @@ class DocumentProcessingStatus(Base):
 
     def __repr__(self) -> str:
         return f"<ProcessingStatus doc={self.document_id} status={self.status!r}>"
+
+
+class Entity(Base):
+    """A resolved knowledge entity in a user's library (M6). MySQL is the source
+    of truth; M7 projects these into Neo4j for traversal."""
+
+    __tablename__ = "entities"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    canonical_name: Mapped[str] = mapped_column(String(512), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(512), nullable=False)
+    type: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    aliases: Mapped[list["EntityAlias"]] = relationship(
+        back_populates="entity", cascade="all, delete-orphan"
+    )
+    mentions: Mapped[list["EntityMention"]] = relationship(
+        back_populates="entity", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_entities_user_normalized", "user_id", "normalized_name"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Entity id={self.id} name={self.canonical_name!r} type={self.type}>"
+
+
+class EntityAlias(Base):
+    """An alternate surface form that resolves to the same entity."""
+
+    __tablename__ = "entity_aliases"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    entity_id: Mapped[int] = mapped_column(
+        ForeignKey("entities.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    alias: Mapped[str] = mapped_column(String(512), nullable=False)
+
+    entity: Mapped["Entity"] = relationship(back_populates="aliases")
+
+
+class EntityMention(Base):
+    """Provenance: a place (chunk) where an entity was mentioned."""
+
+    __tablename__ = "entity_mentions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    entity_id: Mapped[int] = mapped_column(
+        ForeignKey("entities.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    chunk_id: Mapped[int] = mapped_column(
+        ForeignKey("chunks.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    surface_text: Mapped[str] = mapped_column(String(512), nullable=False)
+
+    entity: Mapped["Entity"] = relationship(back_populates="mentions")
+
+
+class Relationship(Base):
+    """A typed, evidence-backed edge between two entities (M6). Source of truth
+    in MySQL; projected into Neo4j in M7."""
+
+    __tablename__ = "relationships"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    source_entity_id: Mapped[int] = mapped_column(
+        ForeignKey("entities.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    target_entity_id: Mapped[int] = mapped_column(
+        ForeignKey("entities.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    type: Mapped[str] = mapped_column(String(128), nullable=False)
+    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.7)
+    chunk_id: Mapped[int] = mapped_column(
+        ForeignKey("chunks.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<Relationship {self.source_entity_id}-[{self.type}]->{self.target_entity_id}>"

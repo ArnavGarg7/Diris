@@ -5,7 +5,7 @@ testable and the storage swappable.
 """
 from __future__ import annotations
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from .models import (
@@ -13,6 +13,10 @@ from .models import (
     Document,
     DocumentMetadata,
     DocumentProcessingStatus,
+    Entity,
+    EntityAlias,
+    EntityMention,
+    Relationship,
     User,
 )
 
@@ -185,5 +189,141 @@ class ProcessingStatusRepository:
                 select(DocumentProcessingStatus)
                 .where(DocumentProcessingStatus.document_id == document_id)
                 .order_by(DocumentProcessingStatus.created_at)
+            ).scalars()
+        )
+
+
+class EntityRepository:
+    """Resolved-entity registry + aliases + provenance mentions. User-scoped."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def create(
+        self, *, user_id: int, canonical_name: str, normalized_name: str,
+        type: str, description: str | None = None,
+    ) -> Entity:
+        entity = Entity(
+            user_id=user_id, canonical_name=canonical_name,
+            normalized_name=normalized_name, type=type, description=description,
+        )
+        self.db.add(entity)
+        self.db.commit()
+        self.db.refresh(entity)
+        return entity
+
+    def get(self, entity_id: int) -> Entity | None:
+        return self.db.get(Entity, entity_id)
+
+    def get_for_user(self, entity_id: int, user_id: int) -> Entity | None:
+        return self.db.execute(
+            select(Entity).where(Entity.id == entity_id, Entity.user_id == user_id)
+        ).scalar_one_or_none()
+
+    def find_by_normalized(self, user_id: int, normalized_name: str) -> Entity | None:
+        return self.db.execute(
+            select(Entity).where(
+                Entity.user_id == user_id, Entity.normalized_name == normalized_name
+            )
+        ).scalars().first()
+
+    def find_by_alias(self, user_id: int, normalized_alias: str) -> Entity | None:
+        return self.db.execute(
+            select(Entity)
+            .join(EntityAlias, EntityAlias.entity_id == Entity.id)
+            .where(
+                Entity.user_id == user_id,
+                func.lower(func.trim(EntityAlias.alias)) == normalized_alias,
+            )
+        ).scalars().first()
+
+    def add_alias_if_new(self, entity: Entity, alias: str) -> None:
+        norm = alias.strip().lower()
+        if norm == entity.normalized_name:
+            return
+        existing = {a.alias.strip().lower() for a in entity.aliases}
+        if norm not in existing:
+            self.db.add(EntityAlias(entity_id=entity.id, alias=alias))
+
+    def add_mention(
+        self, entity_id: int, chunk_id: int, document_id: int, surface_text: str
+    ) -> None:
+        self.db.add(
+            EntityMention(
+                entity_id=entity_id, chunk_id=chunk_id,
+                document_id=document_id, surface_text=surface_text,
+            )
+        )
+
+    def list_for_user(self, user_id: int) -> list[Entity]:
+        return list(
+            self.db.execute(
+                select(Entity).where(Entity.user_id == user_id).order_by(Entity.canonical_name)
+            ).scalars()
+        )
+
+    def for_document(self, document_id: int, user_id: int) -> list[Entity]:
+        return list(
+            self.db.execute(
+                select(Entity)
+                .join(EntityMention, EntityMention.entity_id == Entity.id)
+                .where(Entity.user_id == user_id, EntityMention.document_id == document_id)
+                .distinct()
+                .order_by(Entity.canonical_name)
+            ).scalars()
+        )
+
+    def delete_orphans(self, user_id: int) -> list[int]:
+        """Delete this user's entities that have no mentions; return their ids
+        (so the caller can drop them from the vector index too)."""
+        orphan_ids = [
+            row[0]
+            for row in self.db.execute(
+                select(Entity.id)
+                .outerjoin(EntityMention, EntityMention.entity_id == Entity.id)
+                .where(Entity.user_id == user_id, EntityMention.id.is_(None))
+            ).all()
+        ]
+        if orphan_ids:
+            self.db.execute(delete(Entity).where(Entity.id.in_(orphan_ids)))
+            self.db.commit()
+        return orphan_ids
+
+
+class RelationshipRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def create(
+        self, *, user_id: int, source_entity_id: int, target_entity_id: int,
+        type: str, evidence: str | None, confidence: float,
+        chunk_id: int, document_id: int,
+    ) -> Relationship:
+        rel = Relationship(
+            user_id=user_id, source_entity_id=source_entity_id,
+            target_entity_id=target_entity_id, type=type, evidence=evidence,
+            confidence=confidence, chunk_id=chunk_id, document_id=document_id,
+        )
+        self.db.add(rel)
+        self.db.commit()
+        self.db.refresh(rel)
+        return rel
+
+    def for_entity(self, entity_id: int) -> list[Relationship]:
+        return list(
+            self.db.execute(
+                select(Relationship).where(
+                    or_(
+                        Relationship.source_entity_id == entity_id,
+                        Relationship.target_entity_id == entity_id,
+                    )
+                )
+            ).scalars()
+        )
+
+    def for_user(self, user_id: int) -> list[Relationship]:
+        return list(
+            self.db.execute(
+                select(Relationship).where(Relationship.user_id == user_id)
             ).scalars()
         )
