@@ -16,6 +16,7 @@ from ..db.repositories import (
 )
 from ..db.session import SessionLocal
 from ..ingestion import chunk_text, load_document
+from ..vectorstore import get_vector_store
 
 log = logging.getLogger("diris.processing")
 
@@ -54,11 +55,28 @@ def process_document(document_id: int) -> None:
             # --- persist stage (idempotent: clear before re-adding) ---
             chunk_repo = ChunkRepository(db)
             chunk_repo.delete_for_document(document_id)
-            chunk_repo.add_chunks(document_id, chunks)
+            saved_chunks = chunk_repo.add_chunks(document_id, chunks)
             DocumentRepository(db).set_metadata(document_id, "language", language)
 
+            # --- embedding stage: store vectors in Chroma, keyed by chunk id ---
+            vector_store = get_vector_store()
+            vector_store.delete_document(document_id)  # idempotent re-embedding
+            if saved_chunks:
+                vector_store.upsert(
+                    ids=[str(c.id) for c in saved_chunks],
+                    texts=[c.content for c in saved_chunks],
+                    metadatas=[
+                        {
+                            "user_id": document.user_id,
+                            "document_id": document_id,
+                            "chunk_index": c.chunk_index,
+                        }
+                        for c in saved_chunks
+                    ],
+                )
+
             status_repo.record(
-                document_id, "done", stage="chunk", message=f"{len(chunks)} chunks"
+                document_id, "done", stage="embed", message=f"{len(chunks)} chunks"
             )
         except Exception as exc:  # noqa: BLE001 — a bad file must not crash the worker
             log.exception("Processing failed for document %s", document_id)
