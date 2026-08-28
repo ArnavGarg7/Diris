@@ -41,6 +41,11 @@ class Settings:
     chroma_dir: Path = Path(os.getenv("DIRIS_CHROMA_DIR", "data/chroma"))
     chroma_collection: str = os.getenv("DIRIS_CHROMA_COLLECTION", "diris_chunks")
 
+    # Knowledge graph (Neo4j, Milestone 7)
+    neo4j_uri: str = os.getenv("DIRIS_NEO4J_URI", "bolt://localhost:7687")
+    neo4j_user: str = os.getenv("DIRIS_NEO4J_USER", "neo4j")
+    neo4j_password: str = os.getenv("DIRIS_NEO4J_PASSWORD", "dirispassword")
+
     # Entity extraction & resolution (Milestone 6)
     extraction_model: str = os.getenv("DIRIS_EXTRACTION_MODEL", "claude-sonnet-5")
     chroma_entity_collection: str = os.getenv(
