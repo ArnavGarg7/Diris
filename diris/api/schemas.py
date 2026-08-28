@@ -35,3 +35,21 @@ class DocumentOut(BaseModel):
     size_bytes: int
     status: str
     created_at: datetime
+
+
+class ChunkOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    chunk_index: int
+    char_count: int
+    content: str
+
+
+class ProcessingStatusOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    status: str
+    stage: str | None
+    message: str | None
+    created_at: datetime
