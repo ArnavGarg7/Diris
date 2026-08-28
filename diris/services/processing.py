@@ -1,0 +1,68 @@
+"""Background document processing: extract text -> chunk -> persist.
+
+Runs as a FastAPI BackgroundTask after the upload response is sent. Drives the
+status state machine (uploaded -> processing -> done | failed) and populates the
+`chunks` table. Designed to never crash the server: any failure is caught and
+recorded as a `failed` status with the error message.
+"""
+from __future__ import annotations
+
+import logging
+
+from ..db.repositories import (
+    ChunkRepository,
+    DocumentRepository,
+    ProcessingStatusRepository,
+)
+from ..db.session import SessionLocal
+from ..ingestion import chunk_text, load_document
+
+log = logging.getLogger("diris.processing")
+
+
+def detect_language(text: str) -> str:
+    """Stub language detector — returns 'und' (undetermined).
+
+    Kept dependency-free on purpose; real detection lands in M11 (multilingual).
+    Isolating it here means M11 only has to change this one function.
+    """
+    return "und"
+
+
+def process_document(document_id: int) -> None:
+    """Extract, chunk, and persist a document, recording status as it goes.
+
+    IMPORTANT: opens its OWN session. The request session that scheduled this
+    task is already closed by the time the task runs.
+    """
+    with SessionLocal() as db:
+        status_repo = ProcessingStatusRepository(db)
+        document = DocumentRepository(db).get(document_id)
+        if document is None:
+            log.warning("process_document: document %s not found", document_id)
+            return
+
+        status_repo.record(document_id, "processing", stage="start")
+        try:
+            # --- extraction stage (OCR/layout would plug in behind load_document) ---
+            text = load_document(document.stored_path)
+            language = detect_language(text)
+
+            # --- chunking stage ---
+            chunks = chunk_text(text)
+
+            # --- persist stage (idempotent: clear before re-adding) ---
+            chunk_repo = ChunkRepository(db)
+            chunk_repo.delete_for_document(document_id)
+            chunk_repo.add_chunks(document_id, chunks)
+            DocumentRepository(db).set_metadata(document_id, "language", language)
+
+            status_repo.record(
+                document_id, "done", stage="chunk", message=f"{len(chunks)} chunks"
+            )
+        except Exception as exc:  # noqa: BLE001 — a bad file must not crash the worker
+            log.exception("Processing failed for document %s", document_id)
+            db.rollback()  # clear the failed transaction so we can record status
+            status_repo.record(
+                document_id, "failed", stage="processing", message=str(exc)[:500]
+            )

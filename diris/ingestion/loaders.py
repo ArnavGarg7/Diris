@@ -19,6 +19,11 @@ class UnsupportedFormat(Exception):
 
 
 def load_document(path: str | Path) -> str:
+    # EXTENSION SEAM: this suffix dispatch is where future extractors plug in —
+    # OCR for scanned PDFs/images, layout analysis, table/chart/equation extraction
+    # (FR-3). Each would be selected here by suffix (and/or content sniffing) and
+    # return plain text, so the rest of the pipeline is unchanged. Not built yet
+    # on purpose (avoid premature multimodal complexity).
     path = Path(path)
     suffix = path.suffix.lower()
     if suffix in TEXT_SUFFIXES:

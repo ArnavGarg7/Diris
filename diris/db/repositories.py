@@ -77,6 +77,11 @@ class DocumentRepository:
             ).scalars()
         )
 
+    def get(self, document_id: int) -> Document | None:
+        """Unscoped fetch by id. INTERNAL ONLY (e.g. the background worker) —
+        user-facing paths must use get_for_user to enforce ownership."""
+        return self.db.get(Document, document_id)
+
     def get_for_user(self, document_id: int, user_id: int) -> Document | None:
         # Ownership is enforced in the WHERE clause: another user's id returns None.
         return self.db.execute(
@@ -84,6 +89,19 @@ class DocumentRepository:
                 Document.id == document_id, Document.user_id == user_id
             )
         ).scalar_one_or_none()
+
+    def set_metadata(self, document_id: int, key: str, value: str) -> None:
+        """Upsert a single metadata key (delete existing rows for the key, insert)."""
+        self.db.execute(
+            delete(DocumentMetadata).where(
+                DocumentMetadata.document_id == document_id,
+                DocumentMetadata.meta_key == key,
+            )
+        )
+        self.db.add(
+            DocumentMetadata(document_id=document_id, meta_key=key, meta_value=str(value))
+        )
+        self.db.commit()
 
     def delete(self, document: Document) -> None:
         self.db.delete(document)  # ORM cascade removes metadata/chunks/status rows too
