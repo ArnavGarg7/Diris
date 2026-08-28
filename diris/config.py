@@ -29,7 +29,7 @@ class Settings:
 
     # Database (MySQL). Driven entirely by env so Docker vs native is a URL swap.
     database_url: str = os.getenv(
-        "DIRIS_DATABASE_URL", "mysql+pymysql://diris:diris@localhost:3306/diris"
+        "DIRIS_DATABASE_URL", "mysql+pymysql://diris:diris@localhost:3307/diris"
     )
 
     # Auth / JWT. The secret MUST be overridden in .env for anything real.
