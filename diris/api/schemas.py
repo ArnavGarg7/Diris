@@ -62,6 +62,14 @@ class SearchResultOut(BaseModel):
     content: str
 
 
+class HybridResultOut(BaseModel):
+    chunk_id: int
+    document_id: int | None
+    content: str
+    score: float
+    sources: list[str]  # which retrievers matched: vector / keyword / graph
+
+
 class RelationshipOut(BaseModel):
     id: int
     source_entity_id: int
