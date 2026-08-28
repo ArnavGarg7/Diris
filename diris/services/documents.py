@@ -86,5 +86,16 @@ def get_document(db: Session, user: User, document_id: int) -> Document:
 
 def delete_document(db: Session, user: User, document_id: int) -> None:
     doc = get_document(db, user, document_id)
-    Path(doc.stored_path).unlink(missing_ok=True)  # remove the file, then the row
-    DocumentRepository(db).delete(doc)
+    Path(doc.stored_path).unlink(missing_ok=True)  # remove the file...
+    _delete_vectors(document_id)                    # ...its vectors...
+    DocumentRepository(db).delete(doc)              # ...then the DB rows (cascade)
+
+
+def _delete_vectors(document_id: int) -> None:
+    # Best-effort: a vector-store hiccup shouldn't block deleting the document.
+    try:
+        from ..vectorstore import get_vector_store
+
+        get_vector_store().delete_document(document_id)
+    except Exception:  # noqa: BLE001
+        pass

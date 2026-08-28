@@ -53,3 +53,10 @@ class ProcessingStatusOut(BaseModel):
     stage: str | None
     message: str | None
     created_at: datetime
+
+
+class SearchResultOut(BaseModel):
+    chunk_id: int
+    document_id: int | None
+    score: float
+    content: str
