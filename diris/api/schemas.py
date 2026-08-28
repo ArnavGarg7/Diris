@@ -112,3 +112,21 @@ class EntityDetailOut(EntityOut):
             **base.model_dump(),
             relationships=[RelationshipOut.from_relationship(r) for r in relationships],
         )
+
+
+class GraphNodeOut(BaseModel):
+    entity_id: int
+    name: str
+    type: str
+
+
+class GraphEdgeOut(BaseModel):
+    source: int
+    target: int
+    type: str
+    confidence: float | None
+
+
+class NeighborhoodOut(BaseModel):
+    nodes: list[GraphNodeOut]
+    edges: list[GraphEdgeOut]
