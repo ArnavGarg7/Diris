@@ -5,7 +5,7 @@ testable and the storage swappable.
 """
 from __future__ import annotations
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from .models import (
@@ -150,6 +150,25 @@ class ChunkRepository:
         self.db.commit()
         return result.rowcount or 0
 
+    def keyword_search(self, user_id: int, query: str, limit: int = 10) -> list[int]:
+        """Full-text keyword search over a user's chunks. Returns chunk ids ranked
+        by MySQL relevance (MATCH ... AGAINST, natural-language mode)."""
+        rows = self.db.execute(
+            text(
+                """
+                SELECT c.id AS id
+                FROM chunks c
+                JOIN documents d ON d.id = c.document_id
+                WHERE d.user_id = :uid
+                  AND MATCH(c.content) AGAINST(:q IN NATURAL LANGUAGE MODE)
+                ORDER BY MATCH(c.content) AGAINST(:q IN NATURAL LANGUAGE MODE) DESC
+                LIMIT :lim
+                """
+            ),
+            {"uid": user_id, "q": query, "lim": limit},
+        ).all()
+        return [r[0] for r in rows]
+
 
 class ProcessingStatusRepository:
     """Records processing transitions and keeps documents.status in sync."""
@@ -272,6 +291,19 @@ class EntityRepository:
                 .order_by(Entity.canonical_name)
             ).scalars()
         )
+
+    def chunk_ids_for_entities(self, entity_ids: list[int], limit: int = 10) -> list[int]:
+        """Chunks that mention any of these entities, ranked by mention count."""
+        if not entity_ids:
+            return []
+        rows = self.db.execute(
+            select(EntityMention.chunk_id, func.count().label("cnt"))
+            .where(EntityMention.entity_id.in_(entity_ids))
+            .group_by(EntityMention.chunk_id)
+            .order_by(func.count().desc())
+            .limit(limit)
+        ).all()
+        return [r[0] for r in rows]
 
     def delete_orphans(self, user_id: int) -> list[int]:
         """Delete this user's entities that have no mentions; return their ids
