@@ -15,8 +15,18 @@ except ImportError:  # dotenv is optional; env vars still work without it
 
 @dataclass(frozen=True)
 class Settings:
-    api_key: str | None = os.getenv("ANTHROPIC_API_KEY")
-    model: str = os.getenv("DIRIS_MODEL", "claude-opus-5")
+    # LLM provider selection. "auto" picks the first provider with a key present,
+    # in order: groq -> gemini -> anthropic (with the others as runtime fallbacks).
+    llm_provider: str = os.getenv("DIRIS_LLM_PROVIDER", "auto")
+
+    api_key: str | None = os.getenv("ANTHROPIC_API_KEY")          # anthropic
+    groq_api_key: str | None = os.getenv("GROQ_API_KEY")
+    gemini_api_key: str | None = os.getenv("GEMINI_API_KEY")
+
+    model: str = os.getenv("DIRIS_MODEL", "claude-opus-5")        # anthropic model
+    groq_model: str = os.getenv("DIRIS_GROQ_MODEL", "openai/gpt-oss-120b")
+    gemini_model: str = os.getenv("DIRIS_GEMINI_MODEL", "gemini-3.1-flash-lite")
+
     store_dir: Path = Path(os.getenv("DIRIS_STORE_DIR", "data/store"))
 
     # Chunking
