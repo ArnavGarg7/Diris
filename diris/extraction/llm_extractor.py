@@ -1,18 +1,17 @@
-"""LLM-backed entity extractor (the default). Uses the configured extraction
-model (claude-sonnet-5 by default) and the existing extraction prompt."""
+"""LLM-backed entity extractor (the default). Uses the configured provider
+(Groq/Gemini/Anthropic via get_llm) and the existing extraction prompt."""
 from __future__ import annotations
 
-from ..config import settings
-from ..llm import LLM
+from ..llm import get_llm
 from .extractor import extract_knowledge
 from .schema import Extraction
 
 
 class LLMEntityExtractor:
-    def __init__(self, model: str | None = None):
-        # LLM() validates the API key; if absent it raises here (handled upstream
-        # as a best-effort extraction failure — chunks/embeddings still succeed).
-        self.llm = LLM(model or settings.extraction_model)
+    def __init__(self):
+        # get_llm() picks the configured provider; if no key is set it raises
+        # here (handled upstream as best-effort — chunks/embeddings still succeed).
+        self.llm = get_llm()
 
     def extract(self, text: str) -> Extraction:
         return extract_knowledge(text, llm=self.llm)

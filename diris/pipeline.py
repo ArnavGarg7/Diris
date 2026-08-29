@@ -15,7 +15,7 @@ from .extraction import extract_knowledge
 from .graph import KnowledgeGraph
 from .ingestion import chunk_text, load_document
 from .ingestion.loaders import UnsupportedFormat
-from .llm import LLM
+from .llm import BaseLLM, get_llm
 from .qa import Answer, answer_question
 from .retrieval import retrieve
 from .vectorstore import Chunk, VectorStore
@@ -25,7 +25,7 @@ VECTOR_FILE = "vectors.json"
 
 
 class Pipeline:
-    def __init__(self, store_dir: str | Path | None = None, llm: LLM | None = None):
+    def __init__(self, store_dir: str | Path | None = None, llm: BaseLLM | None = None):
         self.store_dir = Path(store_dir or settings.store_dir)
         self.graph_path = self.store_dir / GRAPH_FILE
         self.vector_path = self.store_dir / VECTOR_FILE
@@ -34,9 +34,9 @@ class Pipeline:
         self._llm = llm  # lazily created so `stats` works without an API key
 
     @property
-    def llm(self) -> LLM:
+    def llm(self) -> BaseLLM:
         if self._llm is None:
-            self._llm = LLM()
+            self._llm = get_llm()
         return self._llm
 
     # -- ingestion ---------------------------------------------------------
