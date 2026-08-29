@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..llm import LLM
+from ..llm import get_llm
 from ..retrieval import Evidence
 
 SYSTEM = (
@@ -83,7 +83,7 @@ def answer_question(
     language: str = "the same language as the question",
     history: list[dict] | None = None,
 ) -> Answer:
-    llm = llm or LLM()
+    llm = llm or get_llm()
     chunks_text, sources = _format_chunks(evidence)
     history_text = _format_history(history)
     prompt = PROMPT_TEMPLATE.format(
@@ -93,7 +93,7 @@ def answer_question(
         history=history_text,
         question=question,
     )
-    data = llm.extract_json(prompt, system=SYSTEM, effort="high")
+    data = llm.extract_json(prompt, system=SYSTEM)
     return Answer(
         answer=data.get("answer", ""),
         citations=data.get("citations", []),

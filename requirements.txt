@@ -1,8 +1,13 @@
 # === Core pipeline (required) ===
-anthropic>=0.40.0
 numpy>=1.26
 python-dotenv>=1.0
 pydantic>=2.0
+
+# === LLM providers (at least one key required for extraction/QA) ===
+# The provider is chosen from whichever key is set (groq -> gemini -> anthropic).
+anthropic>=0.40.0    # Claude (used only if ANTHROPIC_API_KEY is set)
+groq>=0.11           # Groq (fast, free tier)
+google-genai>=0.3    # Google Gemini
 
 # === Vector store / embeddings (Milestone 5) ===
 chromadb>=1.0        # local persistent vector DB + default ONNX embeddings
