@@ -73,6 +73,11 @@ def seed(tmp_path):
     chunks = ChunkRepository(db).add_chunks(doc.id, texts)
     c0, c1, c2 = [c.id for c in chunks]
 
+    # InnoDB holds new rows in an in-memory FULLTEXT cache that isn't searchable
+    # until synced; force it so the keyword retriever is deterministic in tests.
+    db.execute(text("OPTIMIZE TABLE chunks"))
+    db.commit()
+
     # Embed the chunks (vector retriever).
     vstore.upsert(
         ids=[str(c.id) for c in chunks],
