@@ -10,12 +10,14 @@ from sqlalchemy.orm import Session
 
 from .models import (
     Chunk,
+    Conversation,
     Document,
     DocumentMetadata,
     DocumentProcessingStatus,
     Entity,
     EntityAlias,
     EntityMention,
+    Message,
     Relationship,
     User,
 )
@@ -370,3 +372,61 @@ class RelationshipRepository:
                 select(Relationship).where(Relationship.document_id == document_id)
             ).scalars()
         )
+
+
+class ConversationRepository:
+    """Conversations + their message turns. User-scoped."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def create(self, user_id: int) -> Conversation:
+        conv = Conversation(user_id=user_id)
+        self.db.add(conv)
+        self.db.commit()
+        self.db.refresh(conv)
+        return conv
+
+    def get_for_user(self, conversation_id: int, user_id: int) -> Conversation | None:
+        return self.db.execute(
+            select(Conversation).where(
+                Conversation.id == conversation_id, Conversation.user_id == user_id
+            )
+        ).scalar_one_or_none()
+
+    def list_for_user(self, user_id: int) -> list[Conversation]:
+        return list(
+            self.db.execute(
+                select(Conversation)
+                .where(Conversation.user_id == user_id)
+                .order_by(Conversation.created_at.desc())
+            ).scalars()
+        )
+
+    def messages(self, conversation_id: int) -> list[Message]:
+        return list(
+            self.db.execute(
+                select(Message)
+                .where(Message.conversation_id == conversation_id)
+                .order_by(Message.created_at, Message.id)
+            ).scalars()
+        )
+
+    def recent_messages(self, conversation_id: int, limit: int = 6) -> list[Message]:
+        """Last `limit` messages, returned in chronological order (for the rewrite)."""
+        newest_first = list(
+            self.db.execute(
+                select(Message)
+                .where(Message.conversation_id == conversation_id)
+                .order_by(Message.created_at.desc(), Message.id.desc())
+                .limit(limit)
+            ).scalars()
+        )
+        return list(reversed(newest_first))
+
+    def add_message(self, conversation_id: int, role: str, content: str) -> Message:
+        msg = Message(conversation_id=conversation_id, role=role, content=content)
+        self.db.add(msg)
+        self.db.commit()
+        self.db.refresh(msg)
+        return msg
