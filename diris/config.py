@@ -27,6 +27,16 @@ class Settings:
     groq_model: str = os.getenv("DIRIS_GROQ_MODEL", "openai/gpt-oss-120b")
     gemini_model: str = os.getenv("DIRIS_GEMINI_MODEL", "gemini-3.1-flash-lite")
 
+    # Hard ceiling on any single LLM HTTP call so a stalled socket fails loudly
+    # instead of freezing a background job forever.
+    llm_timeout_seconds: int = int(os.getenv("DIRIS_LLM_TIMEOUT", "60"))
+
+    # Provider used for BULK entity extraction (one call per chunk). Defaults to
+    # Gemini flash-lite — far faster and with a more generous free tier than
+    # Groq's reasoning model, which throttles hard on multi-chunk documents.
+    # Same "auto"/groq/gemini/anthropic semantics as DIRIS_LLM_PROVIDER.
+    extraction_provider: str = os.getenv("DIRIS_EXTRACTION_PROVIDER", "gemini")
+
     store_dir: Path = Path(os.getenv("DIRIS_STORE_DIR", "data/store"))
 
     # Chunking

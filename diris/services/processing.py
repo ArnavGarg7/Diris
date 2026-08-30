@@ -112,7 +112,19 @@ def process_document(document_id: int, force: bool = False) -> None:
         try:
             from .extraction import extract_document
 
-            counts = extract_document(db, document_id, only_chunk_ids=[c.id for c in added_chunks])
+            # Report live progress on the slow per-chunk extraction loop so the
+            # UI shows movement instead of a frozen "processing" badge.
+            def _progress(done: int, total: int) -> None:
+                status_repo.record(
+                    document_id, "processing", stage="extract",
+                    message=f"extracting entities {done}/{total}",
+                )
+
+            counts = extract_document(
+                db, document_id,
+                only_chunk_ids=[c.id for c in added_chunks],
+                progress=_progress,
+            )
             status_repo.record(
                 document_id, "done", stage="extract",
                 message=(f"+{len(added_chunks)} added, {reused} reused, -{removed} removed; "

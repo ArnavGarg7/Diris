@@ -15,7 +15,10 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..db.models import Document, User
-from ..db.repositories import DocumentRepository
+from ..db.repositories import DocumentRepository, ProcessingStatusRepository
+
+# Statuses at which processing is finished — no live detail to show.
+_TERMINAL_STATUSES = {"done", "failed"}
 
 
 def validate_upload(filename: str, size_bytes: int) -> str:
@@ -98,8 +101,25 @@ def replace_document_content(
     return doc
 
 
+def _attach_processing_detail(db: Session, docs: list[Document]) -> None:
+    """Set a transient `processing_detail` on each still-processing doc (the
+    latest status message, e.g. "extracting entities 7/18"). Terminal docs get
+    None. This attribute is read by DocumentOut (from_attributes)."""
+    for d in docs:  # default so serialization never hits a missing attribute
+        d.processing_detail = None
+    pending = [d.id for d in docs if d.status not in _TERMINAL_STATUSES]
+    if not pending:
+        return
+    messages = ProcessingStatusRepository(db).latest_messages(pending)
+    for d in docs:
+        if d.id in messages:
+            d.processing_detail = messages[d.id]
+
+
 def list_documents(db: Session, user: User) -> list[Document]:
-    return DocumentRepository(db).list_for_user(user.id)
+    docs = DocumentRepository(db).list_for_user(user.id)
+    _attach_processing_detail(db, docs)
+    return docs
 
 
 def get_document(db: Session, user: User, document_id: int) -> Document:
@@ -109,6 +129,7 @@ def get_document(db: Session, user: User, document_id: int) -> Document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
         )
+    _attach_processing_detail(db, [doc])
     return doc
 
 

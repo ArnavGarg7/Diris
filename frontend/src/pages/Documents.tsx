@@ -138,7 +138,14 @@ export default function Documents() {
                 <tr key={d.id} className="border-b border-slate-100 last:border-0">
                   <td className="px-4 py-3 font-medium text-slate-700">{d.original_filename}</td>
                   <td className="px-4 py-3 text-slate-500">{formatBytes(d.size_bytes)}</td>
-                  <td className="px-4 py-3"><StatusBadge status={d.status} /></td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={d.status} />
+                      {!isTerminal(d.status) && d.processing_detail && (
+                        <span className="text-xs text-slate-400">{d.processing_detail}</span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-2">
                       <ActionBtn onClick={() => setChunksFor(d)}>Chunks</ActionBtn>

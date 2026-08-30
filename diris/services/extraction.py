@@ -7,6 +7,8 @@ entity_mentions and relationships, so we only clean up orphaned entities here.
 """
 from __future__ import annotations
 
+from typing import Callable
+
 from ..db.repositories import (
     ChunkRepository,
     DocumentRepository,
@@ -19,8 +21,16 @@ from .resolution import EntityResolver
 
 
 def extract_document(
-    db, document_id: int, only_chunk_ids: list[int] | None = None
+    db,
+    document_id: int,
+    only_chunk_ids: list[int] | None = None,
+    progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, int]:
+    """Extract entities/relationships for a document's chunks.
+
+    `progress(done, total)` (optional) is invoked after each chunk so callers
+    can report live progress on the otherwise-slow extraction loop.
+    """
     document = DocumentRepository(db).get(document_id)
     if document is None:
         return {"entities": 0, "relationships": 0}
@@ -33,8 +43,9 @@ def extract_document(
     resolver = EntityResolver(db, get_entity_index())
     rel_repo = RelationshipRepository(db)
 
+    total = len(chunks)
     n_entities = n_relationships = 0
-    for chunk in chunks:
+    for done, chunk in enumerate(chunks, start=1):
         extraction = extractor.extract(chunk.content)
 
         # Resolve each extracted entity to a canonical entity for this chunk.
@@ -68,6 +79,9 @@ def extract_document(
                 document_id=document_id,
             )
             n_relationships += 1
+
+        if progress is not None:
+            progress(done, total)
 
     # Drop entities left with no mentions (e.g. after reprocessing) and de-index them.
     orphan_ids = EntityRepository(db).delete_orphans(document.user_id)
