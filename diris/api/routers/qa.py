@@ -19,7 +19,9 @@ def ask(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> AnswerOut:
-    result = answer_question(db, current_user, payload.question)
+    result = answer_question(
+        db, current_user, payload.question, answer_language=payload.answer_language
+    )
     return AnswerOut(
         answer=result.answer,
         answered=result.answered,

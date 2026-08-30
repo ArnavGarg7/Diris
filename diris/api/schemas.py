@@ -142,6 +142,8 @@ class NeighborhoodOut(BaseModel):
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
+    # Optional: answer in this language (e.g. "Hindi"). Defaults to the question's language.
+    answer_language: str | None = Field(default=None, max_length=40)
 
 
 class CitationOut(BaseModel):

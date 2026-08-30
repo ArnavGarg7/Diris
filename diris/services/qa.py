@@ -12,6 +12,7 @@ from ..db.models import Chunk, Document, User
 from ..db.repositories import EntityRepository, RelationshipRepository
 from ..llm import get_llm
 from ..vectorstore import get_entity_index
+from .language import detect_language, language_name, translate_to_english
 from .retrieval import hybrid_search
 
 _SNIPPET_CHARS = 300
@@ -43,8 +44,16 @@ class Answer:
     reasoning: str
 
 
-def answer_question(db, user: User, question: str, top_k: int = 6) -> Answer:
-    results = hybrid_search(db, user, question, top_k=top_k)
+def answer_question(
+    db, user: User, question: str, top_k: int = 6, answer_language: str | None = None
+) -> Answer:
+    # Detect the question's language; translate to English for retrieval so the
+    # English-centric embedder + FULLTEXT still match English documents.
+    lang = detect_language(question)
+    retrieval_query = question if lang == "en" else translate_to_english(question)
+    target_language = answer_language or language_name(lang)
+
+    results = hybrid_search(db, user, retrieval_query, top_k=top_k)
     if not results:
         return Answer(
             answer="I couldn't find anything in your documents about that.",
@@ -52,7 +61,7 @@ def answer_question(db, user: User, question: str, top_k: int = 6) -> Answer:
             reasoning="No relevant evidence was retrieved.",
         )
 
-    graph_facts = _graph_facts(db, user, question)
+    graph_facts = _graph_facts(db, user, retrieval_query)
 
     # Number the chunks so the model can cite them; map numbers back to ids.
     number_to_id: dict[int, int] = {}
@@ -61,7 +70,7 @@ def answer_question(db, user: User, question: str, top_k: int = 6) -> Answer:
         number_to_id[i] = r.chunk_id
         chunk_lines.append(f"[{i}] {r.content}")
 
-    prompt = _build_prompt(question, chunk_lines, graph_facts)
+    prompt = _build_prompt(question, chunk_lines, graph_facts, target_language)
     data = get_llm().extract_json(prompt, system=QA_SYSTEM)
 
     # Keep only cited numbers that were actually shown (no fabricated citations),
@@ -125,10 +134,16 @@ def _graph_facts(db, user: User, question: str, max_facts: int = 20) -> list[str
     return facts
 
 
-def _build_prompt(question: str, chunk_lines: list[str], graph_facts: list[str]) -> str:
+def _build_prompt(
+    question: str, chunk_lines: list[str], graph_facts: list[str],
+    answer_language: str = "English",
+) -> str:
     facts_block = "\n".join(graph_facts) if graph_facts else "(none)"
     chunks_block = "\n\n".join(chunk_lines)
     return f"""Answer the question using ONLY the evidence below.
+
+Write the "answer" field in {answer_language}. The evidence and citations stay
+in their original language.
 
 KNOWLEDGE GRAPH FACTS:
 {facts_block}
