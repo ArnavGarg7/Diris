@@ -17,6 +17,18 @@ def test_extraction_drops_relationships_with_unknown_endpoints():
     assert ext.relationships == []  # target not among extracted entities -> dropped
 
 
+def test_extraction_handles_bare_list_response():
+    # Some models return a bare list of entities instead of {entities, relationships}.
+    ext = _coerce([{"name": "NASA", "type": "ORGANIZATION"}])
+    assert [e.name for e in ext.entities] == ["NASA"]
+    assert ext.relationships == []
+
+
+def test_extraction_handles_non_object_response():
+    assert _coerce("garbage").entities == []
+    assert _coerce(None).entities == []
+
+
 def test_extraction_ignores_malformed_rows():
     data = {
         "entities": [{"name": "Bob", "type": "PERSON"}, {"nope": "x"}],

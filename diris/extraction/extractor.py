@@ -55,16 +55,24 @@ def extract_knowledge(chunk: str, llm: BaseLLM | None = None) -> Extraction:
     return _coerce(data)
 
 
-def _coerce(data: dict) -> Extraction:
-    """Validate loosely so one malformed row never sinks a whole chunk."""
+def _coerce(data) -> Extraction:
+    """Validate loosely so one malformed row never sinks a whole chunk.
+
+    Models sometimes return a bare list (of entities) instead of the expected
+    object; be defensive about the top-level shape.
+    """
+    if isinstance(data, list):
+        data = {"entities": data, "relationships": []}
+    if not isinstance(data, dict):
+        data = {}
     entities, rels = [], []
-    for e in (data or {}).get("entities", []):
+    for e in data.get("entities", []):
         try:
             entities.append(Entity(**e))
         except Exception:
             continue
     valid_names = {e.name for e in entities}
-    for r in (data or {}).get("relationships", []):
+    for r in data.get("relationships", []):
         try:
             rel = Relationship(**r)
         except Exception:
