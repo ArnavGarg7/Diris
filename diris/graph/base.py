@@ -27,6 +27,14 @@ class GraphStore(ABC):
         """Return {nodes, edges} within `hops` of an entity, or None if absent."""
 
     @abstractmethod
+    def full_graph(self, user_id: int, limit: int = 200) -> dict:
+        """Return {nodes, edges} for a user's whole graph, capped at `limit`."""
+
+    @abstractmethod
+    def shortest_path(self, user_id: int, source_id: int, target_id: int) -> dict:
+        """Return {nodes, edges, found} for the shortest path between two entities."""
+
+    @abstractmethod
     def clear(self) -> None:
         """Delete everything (tests)."""
 
