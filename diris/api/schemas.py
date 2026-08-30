@@ -138,3 +138,15 @@ class GraphEdgeOut(BaseModel):
 class NeighborhoodOut(BaseModel):
     nodes: list[GraphNodeOut]
     edges: list[GraphEdgeOut]
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+
+
+class AnswerOut(BaseModel):
+    answer: str
+    answered: bool          # false = the documents don't contain the answer
+    confidence: float
+    citations: list[int]    # chunk ids the answer relied on
+    reasoning: str
