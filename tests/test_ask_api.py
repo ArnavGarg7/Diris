@@ -51,6 +51,8 @@ class FakeLLM(BaseLLM):
     name = "fake"
 
     def complete(self, user: str, system: str | None = None, max_tokens: int = 4000) -> str:
+        if '"category"' in user:  # router
+            return json.dumps({"category": "document_query", "query": None, "reply": None})
         return json.dumps({
             "answer": "Neil Armstrong walked on the Moon.",
             "answered": True, "confidence": 0.9, "citations": [1],
@@ -74,6 +76,7 @@ def isolated_env(tmp_path):
 
     set_vector_store(ChromaVectorStore(persist_dir=str(tmp_path / "chunks"), collection_name="test_chunks"))
     set_entity_index(ChromaVectorStore(persist_dir=str(tmp_path / "entities"), collection_name="test_entities"))
+    set_llm(FakeLLM())  # default so routing never hits a real provider
     Base.metadata.create_all(engine)
     _wipe()
     yield

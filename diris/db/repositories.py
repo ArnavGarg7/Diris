@@ -468,3 +468,9 @@ class ConversationRepository:
         self.db.commit()
         self.db.refresh(msg)
         return msg
+
+    def set_summary(self, conversation_id: int, summary: str) -> None:
+        conv = self.db.get(Conversation, conversation_id)
+        if conv is not None:
+            conv.summary = summary
+            self.db.commit()
