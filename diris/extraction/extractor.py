@@ -1,7 +1,7 @@
 """LLM-driven knowledge extraction: entities + relationships from a chunk."""
 from __future__ import annotations
 
-from ..llm import get_llm
+from ..llm import BaseLLM, get_llm
 from .schema import ENTITY_TYPES, RELATION_HINTS, Entity, Extraction, Relationship
 
 SYSTEM = (
@@ -44,7 +44,7 @@ PASSAGE:
 """
 
 
-def extract_knowledge(chunk: str, llm: LLM | None = None) -> Extraction:
+def extract_knowledge(chunk: str, llm: BaseLLM | None = None) -> Extraction:
     llm = llm or get_llm()
     prompt = PROMPT_TEMPLATE.format(
         entity_types=", ".join(ENTITY_TYPES),

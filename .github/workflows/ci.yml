@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+          MYSQL_DATABASE: diris
+          MYSQL_USER: diris
+          MYSQL_PASSWORD: diris
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -prootpass"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+      neo4j:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: neo4j/dirispassword
+        ports:
+          - 7474:7474
+          - 7687:7687
+        options: >-
+          --health-cmd="cypher-shell -u neo4j -p dirispassword 'RETURN 1'"
+          --health-interval=10s --health-timeout=10s --health-retries=30
+
+    env:
+      DIRIS_DATABASE_URL: mysql+pymysql://diris:diris@localhost:3307/diris
+      DIRIS_NEO4J_URI: bolt://localhost:7687
+      DIRIS_NEO4J_PASSWORD: dirispassword
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: python -m ruff check .
+
+      - name: Apply migrations
+        run: python -m alembic upgrade head
+
+      - name: Run tests
+        run: python -m pytest
