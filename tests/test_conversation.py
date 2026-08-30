@@ -1,4 +1,4 @@
-"""Conversation memory (M12): repo, contextualization, and multi-turn /ask.
+"""Conversation memory (M12 + router): repo, routing, and multi-turn /ask.
 Needs live MySQL. Injects temp Chroma stores + fake extractor/LLM (no network)."""
 import json
 from pathlib import Path
@@ -29,7 +29,6 @@ from diris.extraction.schema import Extraction
 from diris.llm import set_llm
 from diris.llm.base import BaseLLM
 from diris.security import hash_password
-from diris.services.conversation import contextualize
 from diris.vectorstore import set_entity_index, set_vector_store
 
 
@@ -60,8 +59,8 @@ class FakeLLM(BaseLLM):
 
     def complete(self, user: str, system: str | None = None, max_tokens: int = 4000) -> str:
         self.prompts.append(user)
-        if "STANDALONE QUESTION" in user:  # contextualization call
-            return "who walked on the moon"
+        if '"category"' in user:  # router
+            return json.dumps({"category": "document_query", "query": None, "reply": None})
         return json.dumps({
             "answer": "Neil Armstrong walked on the Moon.", "answered": True,
             "confidence": 0.9, "citations": [1], "reasoning": "Chunk 1.",
@@ -84,6 +83,7 @@ def isolated_env(tmp_path):
 
     set_vector_store(ChromaVectorStore(persist_dir=str(tmp_path / "chunks"), collection_name="test_chunks"))
     set_entity_index(ChromaVectorStore(persist_dir=str(tmp_path / "entities"), collection_name="test_entities"))
+    set_llm(FakeLLM())
     Base.metadata.create_all(engine)
     _wipe()
     yield
@@ -99,7 +99,6 @@ def _auth(email: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
 
-# -- unit-ish ---------------------------------------------------------------
 def test_repository_orders_and_isolates():
     with SessionLocal() as db:
         user = UserRepository(db).create("conv@x.com", hash_password("secret123"))
@@ -107,31 +106,12 @@ def test_repository_orders_and_isolates():
         conv = repo.create(user.id)
         repo.add_message(conv.id, "user", "Q1")
         repo.add_message(conv.id, "assistant", "A1")
-        msgs = repo.messages(conv.id)
-        assert [m.role for m in msgs] == ["user", "assistant"]
-        # isolation
+        assert [m.role for m in repo.messages(conv.id)] == ["user", "assistant"]
         other = UserRepository(db).create("other@x.com", hash_password("secret123"))
         assert repo.get_for_user(conv.id, other.id) is None
 
 
-def test_contextualize_no_history_returns_question():
-    assert contextualize([], "What house is he in?") == "What house is he in?"
-
-
-def test_contextualize_rewrites_with_history():
-    fake = FakeLLM()
-    set_llm(fake)
-    history = [
-        Message(conversation_id=1, role="user", content="Who is Harry Potter?"),
-        Message(conversation_id=1, role="assistant", content="A student at Hogwarts."),
-    ]
-    out = contextualize(history, "What house is he in?")
-    assert out == "who walked on the moon"  # fake rewrite
-    assert any("STANDALONE QUESTION" in p for p in fake.prompts)
-
-
-# -- API multi-turn ---------------------------------------------------------
-def test_multi_turn_flow_persists_and_contextualizes():
+def test_multi_turn_flow_persists_and_routes():
     headers = _auth("chat@x.com")
     set_extractor(FakeExtractor())
     r = client.post(
@@ -146,18 +126,30 @@ def test_multi_turn_flow_persists_and_contextualizes():
     fake = FakeLLM()
     set_llm(fake)
 
-    r1 = client.post("/ask", json={"question": "Who walked on the moon?", "conversation_id": cid}, headers=headers)
-    assert r1.status_code == 200
-    assert r1.json()["conversation_id"] == cid
+    assert client.post("/ask", json={"question": "Who walked on the moon?", "conversation_id": cid}, headers=headers).json()["conversation_id"] == cid
+    assert client.post("/ask", json={"question": "Tell me more about him.", "conversation_id": cid}, headers=headers).status_code == 200
 
-    r2 = client.post("/ask", json={"question": "Tell me more about him.", "conversation_id": cid}, headers=headers)
-    assert r2.status_code == 200
-    # The second turn triggered a contextualization rewrite.
-    assert any("STANDALONE QUESTION" in p for p in fake.prompts)
-
+    # The router ran (category marker) and both turns were persisted.
+    assert any('"category"' in p for p in fake.prompts)
     detail = client.get(f"/conversations/{cid}", headers=headers).json()
     assert [m["role"] for m in detail["messages"]] == ["user", "assistant", "user", "assistant"]
     assert detail["messages"][0]["content"] == "Who walked on the moon?"
+
+
+def test_conversational_greeting_gets_reply_not_retrieval():
+    headers = _auth("greet@x.com")
+
+    class GreetLLM(BaseLLM):
+        name = "greet"
+        def complete(self, user, system=None, max_tokens=4000):
+            return json.dumps({"category": "conversational", "query": None, "reply": "Hi! Ask me about your documents."})
+
+    set_llm(GreetLLM())
+    cid = client.post("/conversations", headers=headers).json()["id"]
+    r = client.post("/ask", json={"question": "hi there", "conversation_id": cid}, headers=headers)
+    body = r.json()
+    assert body["answer"] == "Hi! Ask me about your documents."
+    assert body["citations"] == []
 
 
 def test_conversation_is_user_scoped():
@@ -165,9 +157,7 @@ def test_conversation_is_user_scoped():
     cid = client.post("/conversations", headers=a).json()["id"]
     b = _auth("bob@x.com")
     assert client.get(f"/conversations/{cid}", headers=b).status_code == 404
-    assert client.post(
-        "/ask", json={"question": "hi", "conversation_id": cid}, headers=b
-    ).status_code == 404
+    assert client.post("/ask", json={"question": "hi", "conversation_id": cid}, headers=b).status_code == 404
 
 
 def test_conversations_require_auth():

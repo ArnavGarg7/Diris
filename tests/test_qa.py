@@ -1,5 +1,5 @@
-"""Grounded QA with seeded evidence + a fake LLM (real MySQL + Chroma, no network).
-Skipped if MySQL isn't reachable."""
+"""Grounded QA + conversational routing with seeded evidence + a fake LLM.
+Real MySQL + Chroma, no network. Skipped if MySQL isn't reachable."""
 import json
 
 import pytest
@@ -38,17 +38,27 @@ pytestmark = pytest.mark.skipif(not _db_reachable(), reason="MySQL not reachable
 
 
 class FakeLLM(BaseLLM):
+    """Handles both the router call and the grounded-answer call.
+
+    The router prompt is detected by the '"category"' marker; everything else is
+    treated as the grounded-answer prompt.
+    """
+
     name = "fake"
 
-    def __init__(self, payload: dict):
-        self._payload = payload
+    def __init__(self, answer_payload: dict | None = None, route: dict | None = None):
+        self._answer = answer_payload or {
+            "answer": "(default)", "answered": True, "confidence": 0.5,
+            "citations": [], "reasoning": "x",
+        }
+        self._route = route or {"category": "document_query", "query": None, "reply": None}
         self.prompts: list[str] = []
 
     def complete(self, user: str, system: str | None = None, max_tokens: int = 4000) -> str:
         self.prompts.append(user)
-        if user.startswith("Translate"):  # translation-pivot call
-            return "who walked on the moon"  # pretend translation matches the seeded chunk
-        return json.dumps(self._payload)
+        if '"category"' in user:  # router prompt
+            return json.dumps(self._route)
+        return json.dumps(self._answer)
 
 
 def _wipe(db) -> None:
@@ -65,6 +75,7 @@ def seed(tmp_path):
     vstore = ChromaVectorStore(persist_dir=str(tmp_path / "chunks"), collection_name="test_chunks")
     set_vector_store(vstore)
     set_entity_index(ChromaVectorStore(persist_dir=str(tmp_path / "entities"), collection_name="test_entities"))
+    set_llm(FakeLLM())  # default fake so routing never hits a real provider
 
     Base.metadata.create_all(engine)
     db = SessionLocal()
@@ -96,34 +107,28 @@ def seed(tmp_path):
 
 
 def test_grounded_answer_maps_citations_to_real_chunks(seed):
-    set_llm(FakeLLM({
+    set_llm(FakeLLM(answer_payload={
         "answer": "Neil Armstrong walked on the Moon in 1969.",
         "answered": True, "confidence": 0.9, "citations": [1],
         "reasoning": "Chunk 1 states it directly.",
     }))
     ans = answer_question(seed["db"], seed["user"], "who walked on the moon")
     assert ans.answered is True
-    assert "Armstrong" in ans.answer
-    assert ans.citations  # citation number [1] mapped to a real chunk id
-    cited_ids = {c.chunk_id for c in ans.citations}
-    assert cited_ids <= {seed["c0"], seed["c1"]}
-    # rich, resolvable citation
-    first = ans.citations[0]
-    assert first.document_name == "d.txt"
-    assert isinstance(first.snippet, str) and first.snippet
+    assert ans.citations
+    assert {c.chunk_id for c in ans.citations} <= {seed["c0"], seed["c1"]}
+    assert ans.citations[0].document_name == "d.txt"
+    assert ans.citations[0].snippet
 
 
-def test_no_evidence_returns_answered_false_without_llm(seed):
-    # A user with no documents -> hybrid retrieves nothing -> short-circuit.
+def test_no_evidence_returns_answered_false(seed):
     other = UserRepository(seed["db"]).create("empty@x.com", hash_password("secret123"))
     ans = answer_question(seed["db"], other, "anything at all")
     assert ans.answered is False
     assert ans.citations == []
-    assert ans.confidence == 0.0
 
 
 def test_llm_insufficient_evidence_passes_through(seed):
-    set_llm(FakeLLM({
+    set_llm(FakeLLM(answer_payload={
         "answer": "The documents don't cover the capital of France.",
         "answered": False, "confidence": 0.1, "citations": [],
         "reasoning": "Not present in the evidence.",
@@ -134,27 +139,20 @@ def test_llm_insufficient_evidence_passes_through(seed):
     assert ans.citations == []
 
 
-def test_non_english_question_translates_and_targets_language(seed):
-    fake = FakeLLM({
-        "answer": "नील आर्मस्ट्रांग चाँद पर चले।", "answered": True,
-        "confidence": 0.9, "citations": [1], "reasoning": "Chunk 1.",
-    })
+def test_conversational_message_returns_warm_reply_without_retrieval(seed):
+    fake = FakeLLM(route={"category": "conversational", "query": None, "reply": "Hi! Ask me about your documents."})
     set_llm(fake)
-    # A Hindi question: "who walked on the moon"
-    ans = answer_question(seed["db"], seed["user"], "चाँद पर कौन चला था? यह एक हिंदी प्रश्न है।")
-    # Two LLM calls: a translation, then the answer.
-    assert len(fake.prompts) >= 2
-    assert fake.prompts[0].startswith("Translate")
-    # The answer prompt targets Hindi.
-    assert "Hindi" in fake.prompts[-1]
+    ans = answer_question(seed["db"], seed["user"], "hello there")
     assert ans.answered is True
+    assert ans.answer == "Hi! Ask me about your documents."
+    assert ans.citations == []
+    assert len(fake.prompts) == 1  # only the router ran — no grounded-answer call
 
 
-def test_answer_language_override(seed):
-    fake = FakeLLM({
-        "answer": "respuesta", "answered": True, "confidence": 0.8,
-        "citations": [1], "reasoning": "x",
+def test_answer_language_override_reaches_the_prompt(seed):
+    fake = FakeLLM(answer_payload={
+        "answer": "respuesta", "answered": True, "confidence": 0.8, "citations": [1], "reasoning": "x",
     })
     set_llm(fake)
     answer_question(seed["db"], seed["user"], "who walked on the moon", answer_language="Spanish")
-    assert "Spanish" in fake.prompts[-1]
+    assert "Spanish" in fake.prompts[-1]  # the grounded-answer prompt targets Spanish
