@@ -1,9 +1,12 @@
-"""Background document processing: extract text -> chunk -> persist.
+"""Background document processing: extract text -> chunk -> embed -> extract.
 
-Runs as a FastAPI BackgroundTask after the upload response is sent. Drives the
-status state machine (uploaded -> processing -> done | failed) and populates the
-`chunks` table. Designed to never crash the server: any failure is caught and
-recorded as a `failed` status with the error message.
+Incremental (M13): on re-processing, only *changed* chunks are embedded and
+extracted. Chunks are diffed by content hash — unchanged chunks keep their
+embedding, entities, and relationships; removed chunks (and their vectors /
+graph facts) are deleted; only added chunks do the expensive LLM/embedding work.
+
+Runs as a FastAPI BackgroundTask. Never crashes the server: failures are caught
+and recorded as a `failed` status.
 """
 from __future__ import annotations
 
@@ -13,6 +16,7 @@ from ..db.repositories import (
     ChunkRepository,
     DocumentRepository,
     ProcessingStatusRepository,
+    content_hash,
 )
 from ..db.session import SessionLocal
 from ..ingestion import chunk_text_with_sections, load_document
@@ -22,11 +26,12 @@ from .language import detect_language
 log = logging.getLogger("diris.processing")
 
 
-def process_document(document_id: int) -> None:
-    """Extract, chunk, and persist a document, recording status as it goes.
+def process_document(document_id: int, force: bool = False) -> None:
+    """Extract, (incrementally) chunk/embed/extract, recording status as it goes.
 
-    IMPORTANT: opens its OWN session. The request session that scheduled this
-    task is already closed by the time the task runs.
+    `force=True` rebuilds everything (used by the reprocess endpoint); otherwise
+    unchanged content is skipped and only changed chunks are reprocessed.
+    Opens its OWN session (the request session is already closed by task time).
     """
     with SessionLocal() as db:
         status_repo = ProcessingStatusRepository(db)
@@ -36,69 +41,92 @@ def process_document(document_id: int) -> None:
             return
 
         status_repo.record(document_id, "processing", stage="start")
+        added_chunks = []
+        reused = removed = 0
         try:
-            # --- extraction stage (OCR/layout would plug in behind load_document) ---
             text = load_document(document.stored_path)
             language = detect_language(text)
+            doc_hash = content_hash(text)
 
-            # --- chunking stage (with section/heading provenance) ---
+            # Whole-document unchanged -> nothing to do.
+            if not force and document.content_hash == doc_hash and document.status == "done":
+                status_repo.record(document_id, "done", stage="unchanged", message="no changes detected")
+                return
+
             sectioned = chunk_text_with_sections(text)
-            chunks = [t for t, _ in sectioned]
-            sections = [s for _, s in sectioned]
+            new_items = [(i, t, s, content_hash(t)) for i, (t, s) in enumerate(sectioned)]
+            new_hashes = {h for (_, _, _, h) in new_items}
 
-            # --- persist stage (idempotent: clear before re-adding) ---
             chunk_repo = ChunkRepository(db)
-            chunk_repo.delete_for_document(document_id)
-            saved_chunks = chunk_repo.add_chunks(document_id, chunks, sections=sections)
-            DocumentRepository(db).set_metadata(document_id, "language", language)
+            existing = chunk_repo.list_for_document(document_id)
+            if force:
+                existing_by_hash: dict[str, object] = {}
+                to_remove = existing
+            else:
+                existing_by_hash = {c.content_hash: c for c in existing if c.content_hash}
+                to_remove = [c for c in existing if c.content_hash not in new_hashes]
 
-            # --- embedding stage: store vectors in Chroma, keyed by chunk id ---
             vector_store = get_vector_store()
-            vector_store.delete_document(document_id)  # idempotent re-embedding
-            if saved_chunks:
+
+            # Removed chunks: drop their vectors, then rows (cascade -> mentions/relationships).
+            removed_ids = [c.id for c in to_remove]
+            removed = len(removed_ids)
+            if removed_ids:
+                vector_store.delete_ids([str(i) for i in removed_ids])
+                chunk_repo.delete_by_ids(removed_ids)
+
+            # Reused chunks: keep them (just refresh position/section). Added: collect.
+            add_items = []
+            for (i, t, s, h) in new_items:
+                match = existing_by_hash.get(h)
+                if match is not None:
+                    match.chunk_index = i
+                    match.section = s
+                    reused += 1
+                else:
+                    add_items.append((i, t, s))
+            db.commit()  # persist reused position/section updates
+
+            # Insert + embed ONLY the added chunks (the expensive part, minimised).
+            added_chunks = chunk_repo.insert_chunks(document_id, add_items)
+            if added_chunks:
                 vector_store.upsert(
-                    ids=[str(c.id) for c in saved_chunks],
-                    texts=[c.content for c in saved_chunks],
+                    ids=[str(c.id) for c in added_chunks],
+                    texts=[c.content for c in added_chunks],
                     metadatas=[
-                        {
-                            "user_id": document.user_id,
-                            "document_id": document_id,
-                            "chunk_index": c.chunk_index,
-                        }
-                        for c in saved_chunks
+                        {"user_id": document.user_id, "document_id": document_id, "chunk_index": c.chunk_index}
+                        for c in added_chunks
                     ],
                 )
 
+            DocumentRepository(db).set_metadata(document_id, "language", language)
+            DocumentRepository(db).set_content_hash(document_id, doc_hash)
         except Exception as exc:  # noqa: BLE001 — a bad file must not crash the worker
             log.exception("Processing failed for document %s", document_id)
-            db.rollback()  # clear the failed transaction so we can record status
-            status_repo.record(
-                document_id, "failed", stage="processing", message=str(exc)[:500]
-            )
+            db.rollback()
+            status_repo.record(document_id, "failed", stage="processing", message=str(exc)[:500])
             return
 
-        # Core succeeded: the document is chunked + searchable. Entity extraction
-        # is best-effort enrichment — its failure (e.g. no API key) must NOT mark
-        # the document failed, since chunks/embeddings are already usable.
+        # Entity extraction on the ADDED chunks only (best-effort; also cleans
+        # up entities orphaned by removed chunks).
         try:
             from .extraction import extract_document
 
-            counts = extract_document(db, document_id)
+            counts = extract_document(db, document_id, only_chunk_ids=[c.id for c in added_chunks])
             status_repo.record(
                 document_id, "done", stage="extract",
-                message=f"{len(chunks)} chunks, {counts['entities']} entities, "
-                f"{counts['relationships']} relationships",
+                message=(f"+{len(added_chunks)} added, {reused} reused, -{removed} removed; "
+                         f"{counts['entities']} entities, {counts['relationships']} relationships"),
             )
         except Exception as exc:  # noqa: BLE001
             log.exception("Entity extraction failed for document %s", document_id)
             db.rollback()
             status_repo.record(
                 document_id, "done", stage="extract_failed",
-                message=f"{len(chunks)} chunks; extraction error: {str(exc)[:400]}",
+                message=f"+{len(added_chunks)} added; extraction error: {str(exc)[:400]}",
             )
 
-        # Best-effort: project the resolved graph into Neo4j. Failure here (e.g.
-        # Neo4j down) is logged but does not change the document's status.
+        # Re-project the (updated) graph from current MySQL state (best-effort).
         try:
             from .graph_projection import project_document
 
