@@ -17,17 +17,9 @@ from ..db.repositories import (
 from ..db.session import SessionLocal
 from ..ingestion import chunk_text_with_sections, load_document
 from ..vectorstore import get_vector_store
+from .language import detect_language
 
 log = logging.getLogger("diris.processing")
-
-
-def detect_language(text: str) -> str:
-    """Stub language detector — returns 'und' (undetermined).
-
-    Kept dependency-free on purpose; real detection lands in M11 (multilingual).
-    Isolating it here means M11 only has to change this one function.
-    """
-    return "und"
 
 
 def process_document(document_id: int) -> None:
