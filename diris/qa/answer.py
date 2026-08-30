@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..llm import get_llm
+from ..llm import BaseLLM, get_llm
 from ..retrieval import Evidence
 
 SYSTEM = (
@@ -79,7 +79,7 @@ def _format_chunks(evidence: Evidence, max_chunks: int = 8):
 def answer_question(
     question: str,
     evidence: Evidence,
-    llm: LLM | None = None,
+    llm: BaseLLM | None = None,
     language: str = "the same language as the question",
     history: list[dict] | None = None,
 ) -> Answer:

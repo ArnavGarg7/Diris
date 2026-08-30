@@ -7,3 +7,11 @@
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+exclude = ["alembic"]
+
+[tool.ruff.lint]
+# Pyflakes only (real errors: unused imports, undefined names) — not style churn.
+select = ["F"]
