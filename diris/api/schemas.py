@@ -140,6 +140,17 @@ class NeighborhoodOut(BaseModel):
     edges: list[GraphEdgeOut]
 
 
+class GraphOut(BaseModel):
+    nodes: list[GraphNodeOut]
+    edges: list[GraphEdgeOut]
+
+
+class PathOut(BaseModel):
+    found: bool
+    nodes: list[GraphNodeOut]
+    edges: list[GraphEdgeOut]
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     # Optional: answer in this language (e.g. "Hindi"). Defaults to the question's language.
