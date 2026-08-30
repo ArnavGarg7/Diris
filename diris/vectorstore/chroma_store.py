@@ -66,5 +66,9 @@ class ChromaVectorStore(VectorStoreBase):
     def delete_document(self, document_id: int) -> None:
         self.collection.delete(where={"document_id": document_id})
 
+    def delete_ids(self, ids: list[str]) -> None:
+        if ids:
+            self.collection.delete(ids=ids)
+
     def count(self) -> int:
         return self.collection.count()

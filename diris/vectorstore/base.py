@@ -37,5 +37,9 @@ class VectorStoreBase(ABC):
         """Remove all vectors belonging to a document (idempotent reprocessing)."""
 
     @abstractmethod
+    def delete_ids(self, ids: list[str]) -> None:
+        """Remove specific vectors by id (incremental update: removed chunks)."""
+
+    @abstractmethod
     def count(self) -> int:
         """Total number of vectors stored."""

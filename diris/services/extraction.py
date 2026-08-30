@@ -18,12 +18,17 @@ from ..vectorstore import get_entity_index
 from .resolution import EntityResolver
 
 
-def extract_document(db, document_id: int) -> dict[str, int]:
+def extract_document(
+    db, document_id: int, only_chunk_ids: list[int] | None = None
+) -> dict[str, int]:
     document = DocumentRepository(db).get(document_id)
     if document is None:
         return {"entities": 0, "relationships": 0}
 
     chunks = ChunkRepository(db).list_for_document(document_id)
+    if only_chunk_ids is not None:  # incremental: extract only the added chunks
+        wanted = set(only_chunk_ids)
+        chunks = [c for c in chunks if c.id in wanted]
     extractor = get_extractor()
     resolver = EntityResolver(db, get_entity_index())
     rel_repo = RelationshipRepository(db)
