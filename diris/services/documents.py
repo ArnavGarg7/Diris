@@ -70,6 +70,34 @@ def save_upload(db: Session, user: User, upload: UploadFile) -> Document:
         raise
 
 
+def replace_document_content(
+    db: Session, user: User, document_id: int, upload: UploadFile
+) -> Document:
+    """Replace an existing document's file content (triggers incremental reprocess)."""
+    doc = get_document(db, user, document_id)  # ownership check (404)
+    original = Path(upload.filename or "unnamed").name
+    content = upload.file.read()
+    ext = validate_upload(original, len(content))
+
+    user_dir = settings.upload_dir / str(user.id)
+    user_dir.mkdir(parents=True, exist_ok=True)
+    new_path = user_dir / f"{uuid4().hex}{ext}"
+    new_path.write_bytes(content)
+
+    old_path = doc.stored_path
+    doc.original_filename = original
+    doc.stored_path = str(new_path)
+    doc.content_type = upload.content_type or "application/octet-stream"
+    doc.size_bytes = len(content)
+    doc.status = "uploaded"
+    db.commit()
+    db.refresh(doc)
+
+    if old_path and old_path != str(new_path):
+        Path(old_path).unlink(missing_ok=True)
+    return doc
+
+
 def list_documents(db: Session, user: User) -> list[Document]:
     return DocumentRepository(db).list_for_user(user.id)
 

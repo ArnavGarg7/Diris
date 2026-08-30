@@ -45,6 +45,20 @@ def get_document(
     return document_service.get_document(db, current_user, document_id)
 
 
+@router.put("/{document_id}", response_model=DocumentOut)
+def replace_document(
+    document_id: int,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> DocumentOut:
+    """Replace a document's content; incrementally reprocesses only what changed."""
+    doc = document_service.replace_document_content(db, current_user, document_id, file)
+    background_tasks.add_task(process_document, doc.id)  # force=False -> incremental
+    return doc
+
+
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_document(
     document_id: int,
@@ -62,7 +76,7 @@ def reprocess_document(
     current_user: User = Depends(get_current_user),
 ) -> DocumentOut:
     doc = document_service.get_document(db, current_user, document_id)  # ownership check
-    background_tasks.add_task(process_document, doc.id)
+    background_tasks.add_task(process_document, doc.id, True)  # force full rebuild
     return doc
 
 
