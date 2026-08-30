@@ -1,5 +1,6 @@
 // Central API client: base URL + JWT injection + error handling.
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+export const API_BASE = BASE
 
 export class ApiError extends Error {
   status: number

@@ -5,6 +5,7 @@ import AppLayout from './components/AppLayout'
 import Placeholder from './components/Placeholder'
 import Chat from './pages/Chat'
 import Documents from './pages/Documents'
+import Graph from './pages/Graph'
 import Login from './pages/Login'
 import Register from './pages/Register'
 
@@ -31,7 +32,7 @@ export default function App() {
             <Route index element={<Navigate to="documents" replace />} />
             <Route path="documents" element={<Documents />} />
             <Route path="chat" element={<Chat />} />
-            <Route path="graph" element={<Placeholder title="Graph" />} />
+            <Route path="graph" element={<Graph />} />
             <Route path="search" element={<Placeholder title="Search" />} />
             <Route path="entities" element={<Placeholder title="Entities" />} />
           </Route>
