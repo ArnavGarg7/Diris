@@ -53,6 +53,17 @@ export type EntityOut = {
   mention_count: number
 }
 
+export type RelationshipOut = {
+  id: number
+  source_entity_id: number
+  target_entity_id: number
+  type: string
+  evidence: string | null
+  confidence: number
+}
+
+export type EntityDetail = EntityOut & { relationships: RelationshipOut[] }
+
 export type GraphNode = { entity_id: number; name: string; type: string }
 export type GraphEdge = { source: number; target: number; type: string; confidence: number | null }
 export type GraphOut = { nodes: GraphNode[]; edges: GraphEdge[] }
