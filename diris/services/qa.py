@@ -12,13 +12,13 @@ from ..db.models import Chunk, Document, User
 from ..db.repositories import EntityRepository, RelationshipRepository
 from ..llm import get_llm
 from ..vectorstore import get_entity_index
-from .language import detect_language, language_name, translate_to_english
+from .persona import persona
 from .retrieval import hybrid_search
 
 _SNIPPET_CHARS = 300
 
-QA_SYSTEM = (
-    "You are a precise question-answering assistant grounded in a user's documents. "
+QA_SYSTEM = persona() + (
+    "\n\nRIGHT NOW you are answering a question strictly from the user's documents. "
     "Answer ONLY using the provided evidence (text chunks and knowledge-graph facts). "
     "Never use outside knowledge. If the evidence does not contain the answer, say so "
     "plainly and set answered=false. If the sources disagree, present BOTH viewpoints "
@@ -48,12 +48,18 @@ class Answer:
 def answer_question(
     db, user: User, question: str, top_k: int = 6, answer_language: str | None = None
 ) -> Answer:
-    # Detect the question's language; translate to English for retrieval so the
-    # English-centric embedder + FULLTEXT still match English documents.
-    lang = detect_language(question)
-    retrieval_query = question if lang == "en" else translate_to_english(question)
-    target_language = answer_language or language_name(lang)
+    """Single-turn entrypoint: route (small talk vs document question) then answer."""
+    from .conversation import respond
 
+    return respond(db, user, question, history="", answer_language=answer_language, top_k=top_k)
+
+
+def answer_grounded(
+    db, user: User, retrieval_query: str, user_message: str,
+    answer_language: str | None = None, top_k: int = 6,
+) -> Answer:
+    """Grounded, cited answer. `retrieval_query` (English) drives retrieval;
+    `user_message` (original) drives the answer language."""
     results = hybrid_search(db, user, retrieval_query, top_k=top_k)
     if not results:
         return Answer(
@@ -71,7 +77,8 @@ def answer_question(
         number_to_id[i] = r.chunk_id
         chunk_lines.append(f"[{i}] {r.content}")
 
-    prompt = _build_prompt(question, chunk_lines, graph_facts, target_language)
+    directive = answer_language or "the same language as the QUESTION above"
+    prompt = _build_prompt(user_message, chunk_lines, graph_facts, directive)
     data = get_llm().extract_json(prompt, system=QA_SYSTEM)
 
     # Keep only cited numbers that were actually shown (no fabricated citations),
