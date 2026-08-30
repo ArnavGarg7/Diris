@@ -5,6 +5,7 @@ export type DocumentOut = {
   size_bytes: number
   status: string
   created_at: string
+  processing_detail?: string | null
 }
 
 export type ChunkOut = {

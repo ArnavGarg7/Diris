@@ -255,6 +255,20 @@ class ProcessingStatusRepository:
             ).scalars()
         )
 
+    def latest_messages(self, document_ids: list[int]) -> dict[int, str | None]:
+        """Latest status message per document (for live progress display)."""
+        if not document_ids:
+            return {}
+        rows = self.db.execute(
+            select(DocumentProcessingStatus)
+            .where(DocumentProcessingStatus.document_id.in_(document_ids))
+            .order_by(DocumentProcessingStatus.created_at)
+        ).scalars()
+        latest: dict[int, str | None] = {}
+        for r in rows:  # ascending order -> last write wins
+            latest[r.document_id] = r.message
+        return latest
+
 
 class EntityRepository:
     """Resolved-entity registry + aliases + provenance mentions. User-scoped."""

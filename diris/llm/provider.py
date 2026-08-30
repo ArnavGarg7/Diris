@@ -5,12 +5,13 @@ from ..config import settings
 from .base import BaseLLM
 
 _llm: BaseLLM | None = None
+_extraction_llm: BaseLLM | None = None
 
 _DEFAULT_ORDER = ["groq", "gemini", "anthropic"]
 
 
-def _provider_order() -> list[str]:
-    pref = settings.llm_provider.lower()
+def _order_for(pref: str) -> list[str]:
+    pref = pref.lower()
     if pref in _DEFAULT_ORDER:  # explicit choice first, others as fallback
         return [pref] + [p for p in _DEFAULT_ORDER if p != pref]
     return _DEFAULT_ORDER  # "auto"
@@ -36,11 +37,8 @@ def _make(provider: str) -> BaseLLM | None:
     return None
 
 
-def get_llm() -> BaseLLM:
-    global _llm
-    if _llm is not None:
-        return _llm
-    chain = [c for c in (_make(p) for p in _provider_order()) if c is not None]
+def _build_chain(order: list[str]) -> BaseLLM:
+    chain = [c for c in (_make(p) for p in order) if c is not None]
     if not chain:
         raise RuntimeError(
             "No LLM provider configured. Set GROQ_API_KEY, GEMINI_API_KEY, or "
@@ -48,11 +46,30 @@ def get_llm() -> BaseLLM:
         )
     from .fallback import FallbackLLM
 
-    _llm = chain[0] if len(chain) == 1 else FallbackLLM(chain)
+    return chain[0] if len(chain) == 1 else FallbackLLM(chain)
+
+
+def get_llm() -> BaseLLM:
+    """The general-purpose LLM (routing, QA, translation)."""
+    global _llm
+    if _llm is None:
+        _llm = _build_chain(_order_for(settings.llm_provider))
     return _llm
 
 
+def get_extraction_llm() -> BaseLLM:
+    """The LLM used for bulk entity extraction — prefers a fast, high-limit
+    provider (Gemini flash-lite by default) so multi-chunk documents don't
+    stall on the slower general-purpose model. Falls back to the others."""
+    global _extraction_llm
+    if _extraction_llm is None:
+        _extraction_llm = _build_chain(_order_for(settings.extraction_provider))
+    return _extraction_llm
+
+
 def set_llm(llm: BaseLLM | None) -> None:
-    """Inject a provider (tests) or reset to None to rebuild lazily."""
-    global _llm
+    """Inject a provider (tests) or reset to None to rebuild lazily. Also clears
+    the extraction LLM so both are rebuilt from current config/injection."""
+    global _llm, _extraction_llm
     _llm = llm
+    _extraction_llm = llm

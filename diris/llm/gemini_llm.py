@@ -10,11 +10,17 @@ class GeminiLLM(BaseLLM):
 
     def __init__(self, model: str | None = None):
         from google import genai
+        from google.genai import types
 
         if not settings.gemini_api_key:
             raise RuntimeError("GEMINI_API_KEY is not set")
         self.model = model or settings.gemini_model
-        self.client = genai.Client(api_key=settings.gemini_api_key)
+        # HttpOptions.timeout is in milliseconds; cap every call so a stalled
+        # request fails instead of freezing the worker.
+        self.client = genai.Client(
+            api_key=settings.gemini_api_key,
+            http_options=types.HttpOptions(timeout=settings.llm_timeout_seconds * 1000),
+        )
 
     def complete(self, user: str, system: str | None = None, max_tokens: int = 4000) -> str:
         from google.genai import types

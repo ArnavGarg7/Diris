@@ -35,6 +35,9 @@ class DocumentOut(BaseModel):
     size_bytes: int
     status: str
     created_at: datetime
+    # Latest processing detail (e.g. "extracting entities 7/18") while a document
+    # is still being processed; None once terminal. Populated by the service.
+    processing_detail: str | None = None
 
 
 class ChunkOut(BaseModel):

@@ -14,7 +14,13 @@ class GroqLLM(BaseLLM):
         if not settings.groq_api_key:
             raise RuntimeError("GROQ_API_KEY is not set")
         self.model = model or settings.groq_model
-        self.client = Groq(api_key=settings.groq_api_key)
+        # timeout: a hung request fails instead of freezing the worker.
+        # max_retries: the SDK backs off on 429/5xx (Groq free-tier rate limits).
+        self.client = Groq(
+            api_key=settings.groq_api_key,
+            timeout=float(settings.llm_timeout_seconds),
+            max_retries=2,
+        )
 
     def complete(self, user: str, system: str | None = None, max_tokens: int = 4000) -> str:
         messages = []
