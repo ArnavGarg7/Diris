@@ -118,14 +118,18 @@ class ChunkRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def add_chunks(self, document_id: int, texts: list[str]) -> list[Chunk]:
+    def add_chunks(
+        self, document_id: int, texts: list[str], sections: list[str | None] | None = None
+    ) -> list[Chunk]:
         """Insert all chunks for a document in a single transaction (all-or-nothing)."""
+        sections = sections or [None] * len(texts)
         chunks = [
             Chunk(
                 document_id=document_id,
                 chunk_index=i,
                 content=text,
                 char_count=len(text),
+                section=sections[i],
             )
             for i, text in enumerate(texts)
         ]
