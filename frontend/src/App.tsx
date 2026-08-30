@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import AppLayout from './components/AppLayout'
 import Placeholder from './components/Placeholder'
+import Chat from './pages/Chat'
 import Documents from './pages/Documents'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -29,7 +30,7 @@ export default function App() {
           >
             <Route index element={<Navigate to="documents" replace />} />
             <Route path="documents" element={<Documents />} />
-            <Route path="chat" element={<Placeholder title="Chat" />} />
+            <Route path="chat" element={<Chat />} />
             <Route path="graph" element={<Placeholder title="Graph" />} />
             <Route path="search" element={<Placeholder title="Search" />} />
             <Route path="entities" element={<Placeholder title="Entities" />} />
