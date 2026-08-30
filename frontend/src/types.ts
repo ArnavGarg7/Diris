@@ -32,6 +32,18 @@ export type AnswerOut = {
   conversation_id: number | null
 }
 
+export type ConversationOut = {
+  id: number
+  created_at: string
+  message_count: number
+}
+
+export type MessageOut = {
+  role: string
+  content: string
+  created_at: string
+}
+
 export type EntityOut = {
   id: number
   canonical_name: string
