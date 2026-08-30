@@ -42,8 +42,12 @@ class FakeLLM(BaseLLM):
 
     def __init__(self, payload: dict):
         self._payload = payload
+        self.prompts: list[str] = []
 
     def complete(self, user: str, system: str | None = None, max_tokens: int = 4000) -> str:
+        self.prompts.append(user)
+        if user.startswith("Translate"):  # translation-pivot call
+            return "who walked on the moon"  # pretend translation matches the seeded chunk
         return json.dumps(self._payload)
 
 
@@ -128,3 +132,29 @@ def test_llm_insufficient_evidence_passes_through(seed):
     assert ans.answered is False
     assert ans.confidence < 0.5
     assert ans.citations == []
+
+
+def test_non_english_question_translates_and_targets_language(seed):
+    fake = FakeLLM({
+        "answer": "नील आर्मस्ट्रांग चाँद पर चले।", "answered": True,
+        "confidence": 0.9, "citations": [1], "reasoning": "Chunk 1.",
+    })
+    set_llm(fake)
+    # A Hindi question: "who walked on the moon"
+    ans = answer_question(seed["db"], seed["user"], "चाँद पर कौन चला था? यह एक हिंदी प्रश्न है।")
+    # Two LLM calls: a translation, then the answer.
+    assert len(fake.prompts) >= 2
+    assert fake.prompts[0].startswith("Translate")
+    # The answer prompt targets Hindi.
+    assert "Hindi" in fake.prompts[-1]
+    assert ans.answered is True
+
+
+def test_answer_language_override(seed):
+    fake = FakeLLM({
+        "answer": "respuesta", "answered": True, "confidence": 0.8,
+        "citations": [1], "reasoning": "x",
+    })
+    set_llm(fake)
+    answer_question(seed["db"], seed["user"], "who walked on the moon", answer_language="Spanish")
+    assert "Spanish" in fake.prompts[-1]
