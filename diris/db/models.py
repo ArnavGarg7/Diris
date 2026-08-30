@@ -247,3 +247,41 @@ class Relationship(Base):
 
     def __repr__(self) -> str:
         return f"<Relationship {self.source_entity_id}-[{self.type}]->{self.target_entity_id}>"
+
+
+class Conversation(Base):
+    """A multi-turn chat session for one user (M12)."""
+
+    __tablename__ = "conversations"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        order_by="Message.created_at",
+    )
+
+
+class Message(Base):
+    """One turn in a conversation (user question or assistant answer)."""
+
+    __tablename__ = "messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)  # user | assistant
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    conversation: Mapped["Conversation"] = relationship(back_populates="messages")
