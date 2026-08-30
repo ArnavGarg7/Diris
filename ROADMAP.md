@@ -398,6 +398,14 @@ User → FastAPI → { MySQL (metadata/users), ChromaDB (embeddings), Neo4j (gra
 - **Acceptance:** documented metrics for each PRD success dimension; known failure modes covered by tests; CI green.
 - **Complexity:** High.
 
+### Milestone 16 — Frontend UI  *(added on request; details TBD after M15)*
+- **Objective:** A web frontend over the existing REST API so the system is usable without Swagger — login/register, document upload + library with processing status, a chat interface for grounded Q&A with inline citations, a graph-visualization view, and (optionally) multilingual + conversation UI.
+- **Why:** Everything through M15 is a backend/API; a UI makes it demoable and usable by non-technical users (FR-13 visualization, general UX).
+- **Concepts (to scope later):** a frontend stack (React/Vue or server-rendered), auth/token handling in the client, file upload UX, streaming/polling for processing status, a graph rendering lib (e.g. Cytoscape/vis-network/D3), rendering citations and confidence.
+- **Dependencies:** M1–M12 (APIs), ideally M14 (graph viz API).
+- **Status:** **placeholder — to be discussed and scoped after M15.** Stack, scope (MVP vs. full), and whether it's one milestone or several will be decided then.
+- **Complexity:** Medium–High (depends on scope).
+
 ---
 
 ## G. Dependency Graph Between Milestones
