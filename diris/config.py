@@ -42,6 +42,15 @@ class Settings:
         "DIRIS_DATABASE_URL", "mysql+pymysql://diris:diris@localhost:3307/diris"
     )
 
+    # CORS: origins allowed to call the API from a browser (the React dev server).
+    cors_origins: tuple[str, ...] = tuple(
+        o.strip()
+        for o in os.getenv(
+            "DIRIS_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+        ).split(",")
+        if o.strip()
+    )
+
     # Auth / JWT. The secret MUST be overridden in .env for anything real.
     jwt_secret: str = os.getenv("DIRIS_JWT_SECRET", "dev-only-insecure-secret-change-me")
     jwt_algorithm: str = os.getenv("DIRIS_JWT_ALG", "HS256")
