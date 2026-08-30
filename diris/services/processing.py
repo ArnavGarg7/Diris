@@ -15,7 +15,7 @@ from ..db.repositories import (
     ProcessingStatusRepository,
 )
 from ..db.session import SessionLocal
-from ..ingestion import chunk_text, load_document
+from ..ingestion import chunk_text_with_sections, load_document
 from ..vectorstore import get_vector_store
 
 log = logging.getLogger("diris.processing")
@@ -49,13 +49,15 @@ def process_document(document_id: int) -> None:
             text = load_document(document.stored_path)
             language = detect_language(text)
 
-            # --- chunking stage ---
-            chunks = chunk_text(text)
+            # --- chunking stage (with section/heading provenance) ---
+            sectioned = chunk_text_with_sections(text)
+            chunks = [t for t, _ in sectioned]
+            sections = [s for _, s in sectioned]
 
             # --- persist stage (idempotent: clear before re-adding) ---
             chunk_repo = ChunkRepository(db)
             chunk_repo.delete_for_document(document_id)
-            saved_chunks = chunk_repo.add_chunks(document_id, chunks)
+            saved_chunks = chunk_repo.add_chunks(document_id, chunks, sections=sections)
             DocumentRepository(db).set_metadata(document_id, "language", language)
 
             # --- embedding stage: store vectors in Chroma, keyed by chunk id ---

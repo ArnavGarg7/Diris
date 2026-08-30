@@ -144,9 +144,18 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
 
 
+class CitationOut(BaseModel):
+    chunk_id: int
+    document_id: int
+    document_name: str
+    section: str | None
+    chunk_index: int
+    snippet: str
+
+
 class AnswerOut(BaseModel):
     answer: str
     answered: bool          # false = the documents don't contain the answer
     confidence: float
-    citations: list[int]    # chunk ids the answer relied on
+    citations: list[CitationOut]  # resolvable source references
     reasoning: str
