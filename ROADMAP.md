@@ -403,8 +403,10 @@ User → FastAPI → { MySQL (metadata/users), ChromaDB (embeddings), Neo4j (gra
 - **Why:** Everything through M15 is a backend/API; a UI makes it demoable and usable by non-technical users (FR-13 visualization, general UX).
 - **Concepts (to scope later):** a frontend stack (React/Vue or server-rendered), auth/token handling in the client, file upload UX, streaming/polling for processing status, a graph rendering lib (e.g. Cytoscape/vis-network/D3), rendering citations and confidence.
 - **Dependencies:** M1–M12 (APIs), ideally M14 (graph viz API).
-- **Status:** **placeholder — to be discussed and scoped after M15.** Stack, scope (MVP vs. full), and whether it's one milestone or several will be decided then.
-- **Complexity:** Medium–High (depends on scope).
+- **Decided (2026-08-24):** **React + Vite + TypeScript + Tailwind CSS**, React Router, vis-network for the graph; **Full scope**, phased. Backend gets `CORSMiddleware` in phase 16.1.
+- **Phases:** 16.1 scaffold + auth + CORS · 16.2 documents (upload/library/status/replace) · 16.3 chat (grounded, cited, conversation memory, answer-language) · 16.4 graph explorer (full/neighborhood/path/export) · 16.5 hybrid search + entity browser.
+- **Testing:** verified live in the browser pane per phase (optional Vitest for API-client logic).
+- **Complexity:** High (multi-screen SPA).
 
 ---
 
