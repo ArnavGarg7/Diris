@@ -36,3 +36,10 @@ def test_parse_json_recovers_from_fences_and_noise():
 def test_empty_document_yields_no_chunks():
     assert chunk_text("") == []
     assert chunk_text("   \n\n   ") == []
+
+
+def test_qa_prompt_instructs_conflict_handling():
+    from diris.services.qa import _build_prompt
+
+    prompt = _build_prompt("Who discovered it?", ["[1] A did", "[2] B did"], [], "English")
+    assert "CONTRADICT" in prompt.upper()  # both viewpoints must be surfaced
