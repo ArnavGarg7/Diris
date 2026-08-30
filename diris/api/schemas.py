@@ -144,6 +144,36 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     # Optional: answer in this language (e.g. "Hindi"). Defaults to the question's language.
     answer_language: str | None = Field(default=None, max_length=40)
+    # Optional: continue an existing conversation (enables multi-turn memory).
+    conversation_id: int | None = None
+
+
+class MessageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    role: str
+    content: str
+    created_at: datetime
+
+
+class ConversationOut(BaseModel):
+    id: int
+    created_at: datetime
+    message_count: int
+
+    @classmethod
+    def from_conversation(cls, conversation) -> "ConversationOut":
+        return cls(
+            id=conversation.id,
+            created_at=conversation.created_at,
+            message_count=len(conversation.messages),
+        )
+
+
+class ConversationDetailOut(BaseModel):
+    id: int
+    created_at: datetime
+    messages: list[MessageOut]
 
 
 class CitationOut(BaseModel):
@@ -161,3 +191,4 @@ class AnswerOut(BaseModel):
     confidence: float
     citations: list[CitationOut]  # resolvable source references
     reasoning: str
+    conversation_id: int | None = None  # set when the turn was part of a conversation
