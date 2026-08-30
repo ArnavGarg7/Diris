@@ -8,7 +8,7 @@ from ...db.models import User
 from ...db.session import get_db
 from ...services.qa import answer_question
 from ..deps import get_current_user
-from ..schemas import AnswerOut, AskRequest
+from ..schemas import AnswerOut, AskRequest, CitationOut
 
 router = APIRouter(tags=["qa"])
 
@@ -24,6 +24,16 @@ def ask(
         answer=result.answer,
         answered=result.answered,
         confidence=result.confidence,
-        citations=result.citations,
+        citations=[
+            CitationOut(
+                chunk_id=c.chunk_id,
+                document_id=c.document_id,
+                document_name=c.document_name,
+                section=c.section,
+                chunk_index=c.chunk_index,
+                snippet=c.snippet,
+            )
+            for c in result.citations
+        ],
         reasoning=result.reasoning,
     )

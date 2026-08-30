@@ -8,11 +8,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..db.models import User
+from ..db.models import Chunk, Document, User
 from ..db.repositories import EntityRepository, RelationshipRepository
 from ..llm import get_llm
 from ..vectorstore import get_entity_index
 from .retrieval import hybrid_search
+
+_SNIPPET_CHARS = 300
 
 QA_SYSTEM = (
     "You are a precise question-answering assistant grounded in a user's documents. "
@@ -23,11 +25,21 @@ QA_SYSTEM = (
 
 
 @dataclass
+class Citation:
+    chunk_id: int
+    document_id: int
+    document_name: str
+    section: str | None
+    chunk_index: int
+    snippet: str
+
+
+@dataclass
 class Answer:
     answer: str
     answered: bool          # was the evidence sufficient to answer?
     confidence: float
-    citations: list[int]    # chunk ids the answer relied on
+    citations: list[Citation]   # resolvable source references
     reasoning: str
 
 
@@ -52,17 +64,39 @@ def answer_question(db, user: User, question: str, top_k: int = 6) -> Answer:
     prompt = _build_prompt(question, chunk_lines, graph_facts)
     data = get_llm().extract_json(prompt, system=QA_SYSTEM)
 
-    cited = [
+    # Keep only cited numbers that were actually shown (no fabricated citations),
+    # then resolve each to a rich, user-inspectable source reference.
+    cited_ids = [
         number_to_id[n]
         for n in (data.get("citations") or [])
         if isinstance(n, int) and n in number_to_id
     ]
+    result_by_id = {r.chunk_id: r for r in results}
+    citations = [_build_citation(db, cid, result_by_id) for cid in cited_ids]
+    citations = [c for c in citations if c is not None]
+
     return Answer(
         answer=str(data.get("answer", "")).strip(),
         answered=bool(data.get("answered", True)),
         confidence=float(data.get("confidence", 0.0) or 0.0),
-        citations=cited,
+        citations=citations,
         reasoning=str(data.get("reasoning", "")).strip(),
+    )
+
+
+def _build_citation(db, chunk_id: int, result_by_id) -> Citation | None:
+    chunk = db.get(Chunk, chunk_id)
+    if chunk is None:
+        return None
+    document = db.get(Document, chunk.document_id)
+    content = result_by_id[chunk_id].content if chunk_id in result_by_id else chunk.content
+    return Citation(
+        chunk_id=chunk_id,
+        document_id=chunk.document_id,
+        document_name=document.original_filename if document else "",
+        section=chunk.section,
+        chunk_index=chunk.chunk_index,
+        snippet=content.strip()[:_SNIPPET_CHARS],
     )
 
 
