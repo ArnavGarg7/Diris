@@ -101,7 +101,12 @@ def test_grounded_answer_maps_citations_to_real_chunks(seed):
     assert ans.answered is True
     assert "Armstrong" in ans.answer
     assert ans.citations  # citation number [1] mapped to a real chunk id
-    assert set(ans.citations) <= {seed["c0"], seed["c1"]}
+    cited_ids = {c.chunk_id for c in ans.citations}
+    assert cited_ids <= {seed["c0"], seed["c1"]}
+    # rich, resolvable citation
+    first = ans.citations[0]
+    assert first.document_name == "d.txt"
+    assert isinstance(first.snippet, str) and first.snippet
 
 
 def test_no_evidence_returns_answered_false_without_llm(seed):

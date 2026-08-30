@@ -107,6 +107,9 @@ def test_ask_returns_grounded_answer():
     assert body["answered"] is True
     assert "Armstrong" in body["answer"]
     assert body["citations"]  # cited a real chunk
+    cite = body["citations"][0]
+    assert cite["document_name"] == "moon.txt"
+    assert "chunk_id" in cite and "snippet" in cite
 
 
 def test_ask_with_empty_library_says_not_found():
