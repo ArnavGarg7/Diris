@@ -5,8 +5,15 @@ testable and the storage swappable.
 """
 from __future__ import annotations
 
+import hashlib
+
 from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.orm import Session
+
+
+def content_hash(text_value: str) -> str:
+    """SHA-256 hex digest of a string (used for change detection)."""
+    return hashlib.sha256(text_value.encode("utf-8")).hexdigest()
 
 from .models import (
     Chunk,
@@ -96,6 +103,12 @@ class DocumentRepository:
             )
         ).scalar_one_or_none()
 
+    def set_content_hash(self, document_id: int, hash_value: str) -> None:
+        document = self.db.get(Document, document_id)
+        if document is not None:
+            document.content_hash = hash_value
+            self.db.commit()
+
     def set_metadata(self, document_id: int, key: str, value: str) -> None:
         """Upsert a single metadata key (delete existing rows for the key, insert)."""
         self.db.execute(
@@ -132,6 +145,7 @@ class ChunkRepository:
                 content=text,
                 char_count=len(text),
                 section=sections[i],
+                content_hash=content_hash(text),
             )
             for i, text in enumerate(texts)
         ]
@@ -140,6 +154,30 @@ class ChunkRepository:
         for chunk in chunks:
             self.db.refresh(chunk)
         return chunks
+
+    def insert_chunks(
+        self, document_id: int, items: list[tuple[int, str, str | None]]
+    ) -> list[Chunk]:
+        """Insert specific chunks with explicit (index, text, section) — used by
+        incremental update to add only the changed chunks."""
+        chunks = [
+            Chunk(
+                document_id=document_id, chunk_index=i, content=t,
+                char_count=len(t), section=s, content_hash=content_hash(t),
+            )
+            for (i, t, s) in items
+        ]
+        self.db.add_all(chunks)
+        self.db.commit()
+        for chunk in chunks:
+            self.db.refresh(chunk)
+        return chunks
+
+    def delete_by_ids(self, chunk_ids: list[int]) -> None:
+        if not chunk_ids:
+            return
+        self.db.execute(delete(Chunk).where(Chunk.id.in_(chunk_ids)))
+        self.db.commit()
 
     def list_for_document(self, document_id: int) -> list[Chunk]:
         return list(

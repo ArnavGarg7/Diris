@@ -49,6 +49,8 @@ class Document(Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     # Lifecycle state; M4's processing pipeline advances this beyond "uploaded".
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="uploaded")
+    # SHA-256 of the full document text; lets us skip unchanged re-processing (M13).
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -107,6 +109,8 @@ class Chunk(Base):
     char_count: Mapped[int] = mapped_column(nullable=False)
     # Nearest heading this chunk falls under (provenance); null if none (M10).
     section: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # SHA-256 of the chunk content; used to diff chunks on incremental update (M13).
+    content_hash: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
