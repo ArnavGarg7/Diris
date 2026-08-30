@@ -93,6 +93,53 @@ class Neo4jGraphStore(GraphStore):
                 )
             return {"nodes": list(nodes.values()), "edges": edges}
 
+    def full_graph(self, user_id: int, limit: int = 200) -> dict:
+        with self.driver.session() as s:
+            node_recs = s.run(
+                "MATCH (e:Entity {user_id: $uid}) "
+                "RETURN e.entity_id AS id, e.name AS name, e.type AS type LIMIT $lim",
+                uid=user_id, lim=limit,
+            )
+            nodes = [{"entity_id": r["id"], "name": r["name"], "type": r["type"]} for r in node_recs]
+            node_ids = {n["entity_id"] for n in nodes}
+            edge_recs = s.run(
+                "MATCH (a:Entity {user_id: $uid})-[r:REL]->(b:Entity {user_id: $uid}) "
+                "RETURN a.entity_id AS s, b.entity_id AS t, r.type AS type, r.confidence AS confidence "
+                "LIMIT $lim",
+                uid=user_id, lim=limit,
+            )
+            edges = [
+                {"source": r["s"], "target": r["t"], "type": r["type"], "confidence": r["confidence"]}
+                for r in edge_recs
+                if r["s"] in node_ids and r["t"] in node_ids
+            ]
+            return {"nodes": nodes, "edges": edges}
+
+    def shortest_path(self, user_id: int, source_id: int, target_id: int) -> dict:
+        with self.driver.session() as s:
+            rec = s.run(
+                # max 6 hops; undirected so it finds a path regardless of edge direction
+                "MATCH (a:Entity {entity_id: $src, user_id: $uid}), "
+                "(b:Entity {entity_id: $tgt, user_id: $uid}), "
+                "p = shortestPath((a)-[:REL*..6]-(b)) RETURN p",
+                src=source_id, tgt=target_id, uid=user_id,
+            ).single()
+            if rec is None:
+                return {"nodes": [], "edges": [], "found": False}
+            path = rec["p"]
+            nodes = [
+                {"entity_id": n["entity_id"], "name": n["name"], "type": n["type"]}
+                for n in path.nodes
+            ]
+            edges = [
+                {
+                    "source": rel.start_node["entity_id"], "target": rel.end_node["entity_id"],
+                    "type": rel.get("type"), "confidence": rel.get("confidence"),
+                }
+                for rel in path.relationships
+            ]
+            return {"nodes": nodes, "edges": edges, "found": True}
+
     def clear(self) -> None:
         with self.driver.session() as s:
             s.run("MATCH (n) DETACH DELETE n")
