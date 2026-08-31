@@ -9,10 +9,15 @@ const TYPE_COLORS: Record<string, string> = {
   CONCEPT: '#a78bfa', TECHNOLOGY: '#22d3ee', OBJECT: '#f97316', TOPIC: '#94a3b8', WORK: '#e879f9',
 }
 
+type Rel = { type: string; other: string; out: boolean }
+type Focus = { name: string; type: string; rels: Rel[] }
+
 export default function Graph() {
   const containerRef = useRef<HTMLDivElement>(null)
+  const networkRef = useRef<Network | null>(null)
   const [graph, setGraph] = useState<GraphOut | null>(null)
   const [error, setError] = useState('')
+  const [focus, setFocus] = useState<Focus | null>(null)
 
   async function load() {
     setError('')
@@ -29,35 +34,98 @@ export default function Graph() {
   // Render the network whenever the graph data changes.
   useEffect(() => {
     if (!graph || !containerRef.current || graph.nodes.length === 0) return
+
+    const nodeName = new Map(graph.nodes.map((n) => [n.entity_id, n.name]))
+    const nodeType = new Map(graph.nodes.map((n) => [n.entity_id, n.type]))
+
+    // Size each node by how connected it is, so hubs (Harry, Hogwarts) stand out.
+    const degree = new Map<number, number>()
+    for (const e of graph.edges) {
+      degree.set(e.source, (degree.get(e.source) ?? 0) + 1)
+      degree.set(e.target, (degree.get(e.target) ?? 0) + 1)
+    }
+
     const nodes = new DataSet(
       graph.nodes.map((n) => ({
         id: n.entity_id,
         label: n.name,
-        title: n.type,
+        title: `${n.name} · ${n.type}`,
+        value: (degree.get(n.entity_id) ?? 0) + 1,
         color: TYPE_COLORS[n.type] ?? '#94a3b8',
       })),
     )
+    // No edge labels on the canvas (they clutter and are hard to clear reliably);
+    // the relationship type lives in the tooltip and the side panel instead.
     const edges = new DataSet(
       graph.edges.map((e, i) => ({
         id: i,
         from: e.source,
         to: e.target,
-        label: e.type,
-        arrows: 'to',
-        font: { size: 10, color: '#64748b' },
+        title: e.type,
+        arrows: { to: { scaleFactor: 0.5 } },
       })),
     )
     const network = new Network(
       containerRef.current,
       { nodes, edges },
       {
-        nodes: { shape: 'dot', size: 14, font: { color: '#0f172a', size: 13 } },
-        edges: { color: { color: '#cbd5e1' }, smooth: true },
-        physics: { stabilization: true, barnesHut: { springLength: 130 } },
+        nodes: {
+          shape: 'dot',
+          scaling: { min: 8, max: 34, label: { min: 12, max: 20, drawThreshold: 5 } },
+          font: { color: '#0f172a', size: 13 },
+        },
+        edges: {
+          color: { color: '#cbd5e1', opacity: 0.55, highlight: '#6366f1', hover: '#6366f1' },
+          width: 1,
+          selectionWidth: 3,
+          smooth: { enabled: true, type: 'continuous', roundness: 0.2 },
+        },
+        interaction: { hover: true, tooltipDelay: 120, hideEdgesOnDrag: true },
+        physics: {
+          stabilization: { iterations: 250 },
+          barnesHut: {
+            springLength: 220,
+            gravitationalConstant: -14000,
+            centralGravity: 0.15,
+            avoidOverlap: 0.6,
+            damping: 0.35,
+          },
+        },
       },
     )
-    return () => network.destroy()
+    networkRef.current = network
+
+    // Clicking a node highlights its edges (vis selection) and opens a panel
+    // listing its relationships. Clicking it again, or empty space, clears both.
+    let currentId: number | null = null
+    network.on('click', (p: { nodes: number[] }) => {
+      const clicked = p.nodes.length ? p.nodes[0] : null
+      currentId = clicked !== null && clicked === currentId ? null : clicked
+      if (currentId === null) {
+        network.unselectAll()
+        setFocus(null)
+        return
+      }
+      const id = currentId
+      const rels: Rel[] = graph.edges
+        .filter((e) => e.source === id || e.target === id)
+        .map((e) => {
+          const out = e.source === id
+          return { type: e.type, other: nodeName.get(out ? e.target : e.source) ?? '?', out }
+        })
+      setFocus({ name: nodeName.get(id) ?? '?', type: nodeType.get(id) ?? '', rels })
+    })
+
+    return () => {
+      network.destroy()
+      networkRef.current = null
+    }
   }, [graph])
+
+  function clearFocus() {
+    networkRef.current?.unselectAll()
+    setFocus(null)
+  }
 
   async function download(format: 'json' | 'graphml') {
     const res = await fetch(`${API_BASE}/graph/export?format=${format}`, {
@@ -109,7 +177,49 @@ export default function Graph() {
           No graph yet. Upload and process documents, then their entities and relationships appear here.
         </div>
       ) : (
-        <div ref={containerRef} className="h-[calc(100vh-13rem)] rounded-xl border border-slate-200 bg-white" />
+        <>
+          {graph && (
+            <p className="text-xs text-slate-400">
+              Click a node to highlight its links and list them on the right · scroll to zoom · drag to pan · bigger nodes are more connected
+            </p>
+          )}
+          <div className="relative">
+            <div ref={containerRef} className="h-[calc(100vh-13rem)] rounded-xl border border-slate-200 bg-white" />
+
+            {focus && (
+              <div className="absolute right-4 top-4 flex max-h-[calc(100%-2rem)] w-72 flex-col rounded-xl border border-slate-200 bg-white/95 shadow-lg backdrop-blur">
+                <div className="flex items-start justify-between gap-2 border-b border-slate-100 p-4">
+                  <div>
+                    <div className="font-semibold text-slate-800">{focus.name}</div>
+                    <span className="mt-1 inline-flex items-center gap-1.5 text-xs text-slate-500">
+                      <span className="h-2 w-2 rounded-full" style={{ background: TYPE_COLORS[focus.type] ?? '#94a3b8' }} />
+                      {focus.type}
+                    </span>
+                  </div>
+                  <button onClick={clearFocus} className="text-slate-400 hover:text-slate-700" aria-label="Close">✕</button>
+                </div>
+                <div className="overflow-y-auto p-4">
+                  <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+                    {focus.rels.length} relationship{focus.rels.length === 1 ? '' : 's'}
+                  </div>
+                  {focus.rels.length === 0 ? (
+                    <p className="text-sm text-slate-400">No relationships extracted for this entity.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {focus.rels.map((r, i) => (
+                        <li key={i} className="flex items-baseline gap-1.5 text-sm">
+                          <span className="text-slate-400">{r.out ? '→' : '←'}</span>
+                          <span className="font-medium text-indigo-600">{r.type}</span>
+                          <span className="text-slate-700">{r.other}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   )
