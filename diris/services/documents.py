@@ -134,10 +134,20 @@ def get_document(db: Session, user: User, document_id: int) -> Document:
 
 
 def delete_document(db: Session, user: User, document_id: int) -> None:
+    from ..db.repositories import EntityRepository
+
     doc = get_document(db, user, document_id)
     Path(doc.stored_path).unlink(missing_ok=True)  # remove the file...
-    _delete_vectors(document_id)                    # ...its vectors...
+    _delete_vectors(document_id)                    # ...its chunk vectors...
     DocumentRepository(db).delete(doc)              # ...then the DB rows (cascade)
+
+    # The cascade removed the document's chunks and their mentions, which can
+    # leave entities with no mentions left. Clean those orphans up everywhere
+    # (MySQL, the entity-name index, and the graph) so a delete never leaves
+    # dangling entities behind — mirroring the extraction pipeline's cleanup.
+    orphan_ids = EntityRepository(db).delete_orphans(user.id)
+    _deindex_entities(orphan_ids)
+    _cleanup_graph(document_id, orphan_ids)
 
 
 def _delete_vectors(document_id: int) -> None:
@@ -146,5 +156,29 @@ def _delete_vectors(document_id: int) -> None:
         from ..vectorstore import get_vector_store
 
         get_vector_store().delete_document(document_id)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _deindex_entities(entity_ids: list[int]) -> None:
+    # Best-effort: drop orphaned entities from the name-embedding index.
+    if not entity_ids:
+        return
+    try:
+        from ..vectorstore import get_entity_index
+
+        get_entity_index().collection.delete(ids=[str(i) for i in entity_ids])
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _cleanup_graph(document_id: int, orphan_entity_ids: list[int]) -> None:
+    # Best-effort: remove the document's edges and any now-orphaned nodes from Neo4j.
+    try:
+        from ..graph import get_graph_store
+
+        store = get_graph_store()
+        store.delete_document_relationships(document_id)
+        store.delete_entities(orphan_entity_ids)
     except Exception:  # noqa: BLE001
         pass

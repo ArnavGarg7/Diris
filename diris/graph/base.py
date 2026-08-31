@@ -23,6 +23,10 @@ class GraphStore(ABC):
         """Remove a document's edges (for idempotent re-projection)."""
 
     @abstractmethod
+    def delete_entities(self, entity_ids: list[int]) -> None:
+        """Remove entity nodes by id (e.g. orphans left after a document delete)."""
+
+    @abstractmethod
     def neighborhood(self, user_id: int, entity_id: int, hops: int = 1) -> dict | None:
         """Return {nodes, edges} within `hops` of an entity, or None if absent."""
 

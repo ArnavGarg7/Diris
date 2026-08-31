@@ -54,6 +54,7 @@ class NoOpGraphStore(GraphStore):
     def upsert_entity(self, *a, **k): ...
     def upsert_relationship(self, *a, **k): ...
     def delete_document_relationships(self, *a, **k): ...
+    def delete_entities(self, *a, **k): ...
     def neighborhood(self, *a, **k): return None
     def full_graph(self, *a, **k): return {"nodes": [], "edges": []}
     def shortest_path(self, *a, **k): return {"nodes": [], "edges": [], "found": False}
@@ -145,3 +146,27 @@ def test_incremental_reuse_add_remove(env):
     assert banana_id not in ids3       # bananas chunk REMOVED
     assert any("Cherries" in c.content for c in c3)  # cherries ADDED
     assert extractor.calls == 3        # only the ONE new chunk was extracted
+
+
+def test_deleting_document_removes_orphan_entities(env):
+    """Deleting a document must not leave its entities behind as orphans."""
+    from sqlalchemy import func, select
+
+    from diris.services.documents import delete_document
+
+    db, tmp = env["db"], env["tmp"]
+    doc_id = _make_doc(db, tmp, f"{_APPLES}\n\n{_BANANAS}")
+    process_document(doc_id)
+    db.rollback()  # see the worker session's commits
+
+    # extraction produced entities (each with a mention on this document)
+    assert db.execute(select(func.count()).select_from(Entity)).scalar() > 0
+
+    doc = db.get(Document, doc_id)
+    user = db.get(User, doc.user_id)
+    delete_document(db, user, doc_id)
+    db.rollback()
+
+    assert db.get(Document, doc_id) is None  # document gone...
+    # ...and no entities left orphaned (all belonged to that one document)
+    assert db.execute(select(func.count()).select_from(Entity)).scalar() == 0
