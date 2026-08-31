@@ -61,6 +61,13 @@ class Neo4jGraphStore(GraphStore):
         with self.driver.session() as s:
             s.run("MATCH ()-[r:REL {document_id: $did}]->() DELETE r", did=document_id)
 
+    def delete_entities(self, entity_ids: list[int]) -> None:
+        if not entity_ids:
+            return
+        with self.driver.session() as s:
+            # DETACH also drops any remaining edges touching these nodes.
+            s.run("MATCH (e:Entity) WHERE e.entity_id IN $ids DETACH DELETE e", ids=entity_ids)
+
     def neighborhood(self, user_id: int, entity_id: int, hops: int = 1) -> dict | None:
         hops = max(1, min(int(hops), 3))  # bound the traversal (also safe to inline)
         with self.driver.session() as s:
