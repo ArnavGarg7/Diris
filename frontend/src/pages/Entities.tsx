@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   BookOpen, Box, Building2, Calendar, CalendarClock, Circle, Cpu, Hash,
-  Lightbulb, MapPin, Search, Tags, User, X,
+  Lightbulb, MapPin, Network, Search, Tags, User, X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { api } from '../api'
@@ -193,6 +194,13 @@ function Inspector({
       </div>
 
       <div className="space-y-6 p-5">
+        <Link
+          to={`/app/graph?focus=${e.id}`}
+          className="flex items-center justify-center gap-2 rounded-lg border border-border bg-elevated py-2 text-sm font-medium text-ink transition-colors hover:border-accent/50 hover:text-accent"
+        >
+          <Network size={15} /> Focus in knowledge graph
+        </Link>
+
         {e.description && <p className="text-sm leading-relaxed text-muted">{e.description}</p>}
 
         <div className="flex gap-2">

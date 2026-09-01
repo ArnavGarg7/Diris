@@ -3,6 +3,8 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import AppLayout from './components/AppLayout'
 import Chat from './pages/Chat'
+import Dashboard from './pages/Dashboard'
+import DocumentDetail from './pages/DocumentDetail'
 import Documents from './pages/Documents'
 import Entities from './pages/Entities'
 import Graph from './pages/Graph'
@@ -30,8 +32,9 @@ export default function App() {
               </Protected>
             }
           >
-            <Route index element={<Navigate to="documents" replace />} />
+            <Route index element={<Dashboard />} />
             <Route path="documents" element={<Documents />} />
+            <Route path="documents/:id" element={<DocumentDetail />} />
             <Route path="chat" element={<Chat />} />
             <Route path="graph" element={<Graph />} />
             <Route path="search" element={<Search />} />

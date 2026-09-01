@@ -33,6 +33,13 @@ export type AnswerOut = {
   conversation_id: number | null
 }
 
+export type ProcessingStatusOut = {
+  status: string
+  stage: string | null
+  message: string | null
+  created_at: string
+}
+
 export type ConversationOut = {
   id: number
   created_at: string
@@ -87,4 +94,14 @@ export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+export function fmtDate(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '—'
+  return (
+    d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+    ' · ' +
+    d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  )
 }

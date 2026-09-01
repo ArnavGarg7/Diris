@@ -1,21 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
-  ArrowRight, FileText, Layers, RefreshCw, Trash2, Upload, UploadCloud, X,
+  ArrowRight, FileText, Layers, Replace as ReplaceIcon, RotateCw, Trash2, Upload, UploadCloud, X,
 } from 'lucide-react'
 import { api } from '../api'
 import StatusBadge from '../components/StatusBadge'
 import { Button, EmptyState, IconButton, PageHeader, Panel, Spinner } from '../components/ui'
-import { formatBytes, isTerminal, type ChunkOut, type DocumentOut, type EntityOut } from '../types'
+import { fmtDate, formatBytes, isTerminal, type ChunkOut, type DocumentOut, type EntityOut } from '../types'
 
 const FORMATS = ['PDF', 'DOCX', 'TXT', 'MD', 'HTML']
 const PIPELINE = ['Upload', 'Extract text', 'Chunk', 'Analyze entities', 'Build graph']
-
-function fmtDate(iso: string): string {
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
-    ' · ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-}
 
 export default function Documents() {
   const [docs, setDocs] = useState<DocumentOut[]>([])
@@ -97,6 +91,22 @@ export default function Documents() {
       const form = new FormData()
       form.append('file', file)
       await api.put(`/documents/${id}`, form)
+      await load()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  async function reprocess(id: number) {
+    setError('')
+    fetched.current.delete(id)
+    setMeta((m) => {
+      const n = { ...m }
+      delete n[id]
+      return n
+    })
+    try {
+      await api.post(`/documents/${id}/reprocess`)
       await load()
     } catch (e) {
       setError((e as Error).message)
@@ -217,12 +227,12 @@ export default function Documents() {
                     return (
                       <tr key={d.id} className="border-b border-border/60 transition-colors last:border-0 hover:bg-hover/60">
                         <td className="max-w-[260px] px-5 py-3.5">
-                          <div className="flex items-center gap-2.5">
+                          <Link to={`/app/documents/${d.id}`} className="flex items-center gap-2.5 hover:text-accent">
                             <FileText size={16} className="shrink-0 text-faint" />
-                            <span className="truncate font-medium text-ink" title={d.original_filename}>
+                            <span className="truncate font-medium text-ink hover:text-accent" title={d.original_filename}>
                               {d.original_filename}
                             </span>
-                          </div>
+                          </Link>
                         </td>
                         <td className="px-4 py-3.5">
                           <div className="flex flex-col gap-1">
@@ -238,9 +248,10 @@ export default function Documents() {
                         <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-muted">{fmtDate(d.created_at)}</td>
                         <td className="px-5 py-3.5">
                           <div className="flex items-center justify-end gap-0.5">
-                            <IconButton title="View chunks" onClick={() => setChunksFor(d)}><Layers size={15} /></IconButton>
-                            <IconButton title="Replace" onClick={() => { replaceId.current = d.id; replaceInput.current?.click() }}><RefreshCw size={15} /></IconButton>
-                            <IconButton title="Delete" className="hover:text-bad" onClick={() => remove(d.id)}><Trash2 size={15} /></IconButton>
+                            <IconButton title="View chunks" aria-label="View chunks" onClick={() => setChunksFor(d)}><Layers size={15} /></IconButton>
+                            <IconButton title="Reprocess" aria-label="Reprocess document" onClick={() => reprocess(d.id)}><RotateCw size={15} /></IconButton>
+                            <IconButton title="Replace file" aria-label="Replace file" onClick={() => { replaceId.current = d.id; replaceInput.current?.click() }}><ReplaceIcon size={15} /></IconButton>
+                            <IconButton title="Delete" aria-label="Delete document" className="hover:text-bad" onClick={() => remove(d.id)}><Trash2 size={15} /></IconButton>
                           </div>
                         </td>
                       </tr>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Boxes, FileText, Hash, Search as SearchIcon, Sparkles } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowUpRight, Boxes, FileText, Hash, Search as SearchIcon, Sparkles } from 'lucide-react'
 import { api } from '../api'
 import { Button, EmptyState, Page, PageHeader, Panel, Spinner } from '../components/ui'
 import type { HybridResult } from '../types'
@@ -109,10 +110,7 @@ export default function Search() {
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 font-mono text-[11px] text-faint">
                     <span className="text-accent">#{i + 1}</span>
-                    {r.document_id != null && (
-                      <span className="inline-flex items-center gap-1"><FileText size={11} /> doc {r.document_id}</span>
-                    )}
-                    <span>· chunk {r.chunk_id}</span>
+                    <span>chunk {r.chunk_id}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     {r.sources.map((s) => <SourceBadge key={s} source={s} />)}
@@ -122,6 +120,14 @@ export default function Search() {
                   </div>
                 </div>
                 <p className="text-[13px] leading-relaxed text-muted">{r.content}</p>
+                {r.document_id != null && (
+                  <Link
+                    to={`/app/documents/${r.document_id}`}
+                    className="mt-2.5 inline-flex items-center gap-1 text-[12px] text-muted transition-colors hover:text-accent"
+                  >
+                    <FileText size={12} /> Open source document <ArrowUpRight size={12} />
+                  </Link>
+                )}
               </Panel>
             ))}
           </div>

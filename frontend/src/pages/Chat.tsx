@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
-  ArrowUp, ChevronDown, FileText, Languages, MessageSquarePlus, Quote,
+  ArrowUp, ChevronDown, ExternalLink, FileText, Languages, MessageSquarePlus, Quote,
   Sparkles, X,
 } from 'lucide-react'
 import { api } from '../api'
@@ -359,12 +360,8 @@ function MessageView({ m }: { m: ChatMessage }) {
 }
 
 function CitationCard({ c, n }: { c: Citation; n: number }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <button
-      onClick={() => setOpen((o) => !o)}
-      className="group rounded-lg border border-border bg-elevated p-2.5 text-left transition-colors hover:border-accent/40"
-    >
+  const body = (
+    <>
       <div className="flex items-center gap-2">
         <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-[rgba(34,211,238,0.14)] font-mono text-[9px] font-semibold text-accent">
           {n}
@@ -376,12 +373,20 @@ function CitationCard({ c, n }: { c: Citation; n: number }) {
         {c.section && (
           <span className="shrink-0 rounded border border-border px-1.5 text-[10px] text-muted">{c.section}</span>
         )}
+        {c.document_id != null && <ExternalLink size={11} className="shrink-0 text-faint group-hover:text-accent" />}
       </div>
-      <p className={cx('mt-1.5 text-[11px] leading-relaxed text-muted', open ? '' : 'line-clamp-2')}>
-        {c.snippet}
-      </p>
-    </button>
+      <p className="mt-1.5 line-clamp-2 text-[11px] leading-relaxed text-muted">{c.snippet}</p>
+    </>
   )
+  const cls = 'group block rounded-lg border border-border bg-elevated p-2.5 text-left transition-colors'
+  if (c.document_id != null) {
+    return (
+      <Link to={`/app/documents/${c.document_id}`} title={`Open ${c.document_name}`} className={cx(cls, 'hover:border-accent/40')}>
+        {body}
+      </Link>
+    )
+  }
+  return <div className={cls}>{body}</div>
 }
 
 function Reasoning({ text }: { text: string }) {

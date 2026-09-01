@@ -182,6 +182,41 @@ export function PageHeader({
   )
 }
 
+/* ------------------------------------------------------------- MetricCard */
+export function MetricCard({
+  label,
+  value,
+  icon,
+  accent = '#22d3ee',
+  hint,
+}: {
+  label: string
+  value: ReactNode
+  icon?: ReactNode
+  accent?: string
+  hint?: string
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-panel p-4">
+      <div className="flex items-center justify-between">
+        <SectionLabel>{label}</SectionLabel>
+        {icon && (
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: `${accent}14`, color: accent }}>
+            {icon}
+          </span>
+        )}
+      </div>
+      <div className="mt-2 font-display text-[28px] font-semibold leading-none tabular-nums text-ink">{value}</div>
+      {hint && <div className="mt-1.5 text-[11px] text-faint">{hint}</div>}
+    </div>
+  )
+}
+
+/* --------------------------------------------------------------- Skeleton */
+export function Skeleton({ className }: { className?: string }) {
+  return <div className={cx('animate-pulse rounded-md bg-elevated', className)} />
+}
+
 /* ------------------------------------------------------------------- Kbd */
 export function Kbd({ children }: { children: ReactNode }) {
   return (
