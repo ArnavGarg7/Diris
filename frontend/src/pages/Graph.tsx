@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { api, API_BASE, getToken } from '../api'
 import { entityColor } from '../lib/entities'
+import { nodeImage } from '../lib/nodeIcons'
 import { Button, EmptyState, IconButton, SectionLabel, Spinner } from '../components/ui'
 import type { EntityOut, GraphOut } from '../types'
 
@@ -112,17 +113,17 @@ export default function Graph() {
     }
 
     const nodes = new DataSet(
-      nodes0.map((n) => {
-        const c = entityColor(n.type)
-        return {
-          id: n.entity_id,
-          label: n.name,
-          title: `${n.name} · ${n.type}`,
-          value: (degree.get(n.entity_id) ?? 0) + 1,
-          color: { background: c, border: c, highlight: { background: c, border: '#e7edf6' }, hover: { background: c, border: '#e7edf6' } },
-          font: { color: '#c7d2e0', size: 13, face: 'Inter' },
-        }
-      }),
+      nodes0.map((n) => ({
+        id: n.entity_id,
+        label: n.name,
+        title: `${n.name} · ${n.type}`,
+        value: (degree.get(n.entity_id) ?? 0) + 1,
+        shape: 'image',
+        image: nodeImage(n.type),
+        // Transparent box so only the disc shows (no square halo behind it).
+        color: { background: 'rgba(0,0,0,0)', border: 'rgba(0,0,0,0)' },
+        font: { color: '#c7d2e0', size: 13, face: 'Inter' },
+      })),
     )
     const edges = new DataSet(
       edges0.map((e, i) => ({ id: i, from: e.source, to: e.target, title: e.type, arrows: { to: { scaleFactor: 0.5 } } })),
@@ -131,7 +132,11 @@ export default function Graph() {
       containerRef.current,
       { nodes, edges },
       {
-        nodes: { shape: 'dot', scaling: { min: 8, max: 34, label: { min: 12, max: 20, drawThreshold: 5 } }, borderWidth: 1.5 },
+        nodes: {
+          shape: 'image',
+          scaling: { min: 18, max: 46, label: { min: 12, max: 20, drawThreshold: 5 } },
+          shapeProperties: { useBorderWithImage: false },
+        },
         edges: {
           color: { color: '#2a3854', opacity: 0.55, highlight: '#22d3ee', hover: '#22d3ee' },
           width: 1, selectionWidth: 3, smooth: { enabled: true, type: 'continuous', roundness: 0.2 },
