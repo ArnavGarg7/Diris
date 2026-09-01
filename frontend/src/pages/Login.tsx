@@ -1,7 +1,9 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { Languages, Network, Quote, Search } from 'lucide-react'
 import { loginRequest } from '../api'
 import { useAuth } from '../auth/AuthContext'
+import { Button } from '../components/ui'
 
 export default function Login() {
   const { login } = useAuth()
@@ -27,21 +29,18 @@ export default function Login() {
   }
 
   return (
-    <AuthShell title="Sign in to DIRIS">
+    <AuthShell title="Sign in" subtitle="Access your knowledge workspace.">
       <form onSubmit={submit} className="space-y-4">
         <Field label="Email" type="email" value={email} onChange={setEmail} />
         <Field label="Password" type="password" value={password} onChange={setPassword} />
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button
-          disabled={busy}
-          className="w-full rounded-lg bg-indigo-600 py-2.5 font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
+        <AuthError error={error} />
+        <Button type="submit" variant="primary" loading={busy} className="w-full">
           {busy ? 'Signing in…' : 'Sign in'}
-        </button>
+        </Button>
       </form>
-      <p className="mt-4 text-center text-sm text-slate-500">
+      <p className="mt-5 text-center text-sm text-muted">
         No account?{' '}
-        <Link to="/register" className="font-medium text-indigo-600 hover:underline">
+        <Link to="/register" className="font-medium text-accent hover:underline">
           Create one
         </Link>
       </p>
@@ -49,36 +48,101 @@ export default function Login() {
   )
 }
 
-export function AuthShell({ title, children }: { title: string; children: ReactNode }) {
+const FEATURES = [
+  { icon: Network, text: 'Knowledge graph of entities & relationships' },
+  { icon: Search, text: 'Hybrid retrieval — vector + keyword + graph' },
+  { icon: Quote, text: 'Grounded answers with citations' },
+  { icon: Languages, text: 'Multilingual — ask in your language' },
+]
+
+export function AuthShell({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string
+  subtitle?: string
+  children: ReactNode
+}) {
   return (
-    <div className="flex min-h-full items-center justify-center bg-slate-100 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-xl">
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 text-lg font-bold text-white">
-            D
-          </div>
-          <h1 className="text-xl font-semibold text-slate-800">{title}</h1>
-          <p className="text-sm text-slate-500">Knowledge-graph document intelligence</p>
+    <div className="app-backdrop grid min-h-full lg:grid-cols-2">
+      {/* Brand showcase */}
+      <div className="relative hidden flex-col justify-between overflow-hidden border-r border-border p-12 lg:flex">
+        <div className="grid-dots pointer-events-none absolute inset-0 opacity-50" />
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ background: 'radial-gradient(600px 400px at 20% 15%, rgba(34,211,238,0.10), transparent 60%)' }}
+        />
+        <img src="/logo.png" alt="DIRIS — Data. Insight. Relationships." className="relative w-72" />
+        <div className="relative max-w-md space-y-7">
+          <h2 className="font-display text-[32px] font-semibold leading-[1.15] tracking-tight text-ink">
+            Turn documents into a queryable web of knowledge.
+          </h2>
+          <ul className="space-y-3.5">
+            {FEATURES.map((f) => {
+              const Icon = f.icon
+              return (
+                <li key={f.text} className="flex items-center gap-3 text-sm text-muted">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-elevated text-accent">
+                    <Icon size={16} />
+                  </span>
+                  {f.text}
+                </li>
+              )
+            })}
+          </ul>
         </div>
-        {children}
+        <div className="relative font-mono text-[11px] uppercase tracking-[0.22em] text-faint">
+          Data · Insight · Relationships
+        </div>
+      </div>
+
+      {/* Form */}
+      <div className="flex items-center justify-center p-6">
+        <div className="w-full max-w-sm rise">
+          <div className="mb-8 flex items-center gap-3 lg:hidden">
+            <img src="/mark.png" alt="DIRIS" className="h-10 w-10 rounded-xl ring-1 ring-border" />
+            <span className="font-display text-xl font-bold text-ink">DIRIS</span>
+          </div>
+          <h1 className="font-display text-[26px] font-semibold tracking-tight text-ink">{title}</h1>
+          {subtitle && <p className="mt-1.5 text-sm text-muted">{subtitle}</p>}
+          <div className="mt-7">{children}</div>
+        </div>
       </div>
     </div>
   )
 }
 
 export function Field({
-  label, type, value, onChange,
-}: { label: string; type: string; value: string; onChange: (v: string) => void }) {
+  label,
+  type,
+  value,
+  onChange,
+}: {
+  label: string
+  type: string
+  value: string
+  onChange: (v: string) => void
+}) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>
+      <span className="mb-1.5 block text-[13px] font-medium text-muted">{label}</span>
       <input
         type={type}
         value={value}
         required
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+        className="w-full rounded-lg border border-border bg-elevated px-3.5 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-faint focus:border-[color-mix(in_srgb,var(--color-cyan)_55%,transparent)] focus:ring-2 focus:ring-[rgba(34,211,238,0.14)]"
       />
     </label>
+  )
+}
+
+export function AuthError({ error }: { error: string }) {
+  if (!error) return null
+  return (
+    <p className="rounded-lg border border-[rgba(251,113,133,0.28)] bg-[rgba(251,113,133,0.08)] px-3 py-2 text-sm text-bad">
+      {error}
+    </p>
   )
 }

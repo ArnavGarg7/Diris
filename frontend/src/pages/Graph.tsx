@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { DataSet } from 'vis-data'
 import { Network } from 'vis-network'
+import { Download, Maximize2, Minus, Plus, RefreshCw, Waypoints, X } from 'lucide-react'
 import { api, API_BASE, getToken } from '../api'
+import { entityColor } from '../lib/entities'
+import { Button, EmptyState, IconButton, SectionLabel, Spinner } from '../components/ui'
 import type { GraphOut } from '../types'
-
-const TYPE_COLORS: Record<string, string> = {
-  PERSON: '#60a5fa', ORGANIZATION: '#34d399', LOCATION: '#fbbf24', EVENT: '#f472b6',
-  CONCEPT: '#a78bfa', TECHNOLOGY: '#22d3ee', OBJECT: '#f97316', TOPIC: '#94a3b8', WORK: '#e879f9',
-}
 
 type Rel = { type: string; other: string; out: boolean }
 type Focus = { name: string; type: string; rels: Rel[] }
@@ -16,29 +14,30 @@ export default function Graph() {
   const containerRef = useRef<HTMLDivElement>(null)
   const networkRef = useRef<Network | null>(null)
   const [graph, setGraph] = useState<GraphOut | null>(null)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [focus, setFocus] = useState<Focus | null>(null)
 
   async function load() {
     setError('')
+    setLoading(true)
     try {
       setGraph(await api.get<GraphOut>('/graph?limit=500'))
     } catch (e) {
       setError((e as Error).message)
+    } finally {
+      setLoading(false)
     }
   }
   useEffect(() => {
     load()
   }, [])
 
-  // Render the network whenever the graph data changes.
   useEffect(() => {
     if (!graph || !containerRef.current || graph.nodes.length === 0) return
 
     const nodeName = new Map(graph.nodes.map((n) => [n.entity_id, n.name]))
     const nodeType = new Map(graph.nodes.map((n) => [n.entity_id, n.type]))
-
-    // Size each node by how connected it is, so hubs (Harry, Hogwarts) stand out.
     const degree = new Map<number, number>()
     for (const e of graph.edges) {
       degree.set(e.source, (degree.get(e.source) ?? 0) + 1)
@@ -46,16 +45,18 @@ export default function Graph() {
     }
 
     const nodes = new DataSet(
-      graph.nodes.map((n) => ({
-        id: n.entity_id,
-        label: n.name,
-        title: `${n.name} · ${n.type}`,
-        value: (degree.get(n.entity_id) ?? 0) + 1,
-        color: TYPE_COLORS[n.type] ?? '#94a3b8',
-      })),
+      graph.nodes.map((n) => {
+        const c = entityColor(n.type)
+        return {
+          id: n.entity_id,
+          label: n.name,
+          title: `${n.name} · ${n.type}`,
+          value: (degree.get(n.entity_id) ?? 0) + 1,
+          color: { background: c, border: c, highlight: { background: c, border: '#e7edf6' }, hover: { background: c, border: '#e7edf6' } },
+          font: { color: '#c7d2e0', size: 13, face: 'Inter' },
+        }
+      }),
     )
-    // No edge labels on the canvas (they clutter and are hard to clear reliably);
-    // the relationship type lives in the tooltip and the side panel instead.
     const edges = new DataSet(
       graph.edges.map((e, i) => ({
         id: i,
@@ -72,10 +73,10 @@ export default function Graph() {
         nodes: {
           shape: 'dot',
           scaling: { min: 8, max: 34, label: { min: 12, max: 20, drawThreshold: 5 } },
-          font: { color: '#0f172a', size: 13 },
+          borderWidth: 1.5,
         },
         edges: {
-          color: { color: '#cbd5e1', opacity: 0.55, highlight: '#6366f1', hover: '#6366f1' },
+          color: { color: '#2a3854', opacity: 0.55, highlight: '#22d3ee', hover: '#22d3ee' },
           width: 1,
           selectionWidth: 3,
           smooth: { enabled: true, type: 'continuous', roundness: 0.2 },
@@ -95,18 +96,16 @@ export default function Graph() {
     )
     networkRef.current = network
 
-    // Clicking a node highlights its edges (vis selection) and opens a panel
-    // listing its relationships. Clicking it again, or empty space, clears both.
-    let currentId: number | null = null
+    let selected: number | null = null
     network.on('click', (p: { nodes: number[] }) => {
       const clicked = p.nodes.length ? p.nodes[0] : null
-      currentId = clicked !== null && clicked === currentId ? null : clicked
-      if (currentId === null) {
+      selected = clicked !== null && clicked === selected ? null : clicked
+      if (selected === null) {
         network.unselectAll()
         setFocus(null)
         return
       }
-      const id = currentId
+      const id = selected
       const rels: Rel[] = graph.edges
         .filter((e) => e.source === id || e.target === id)
         .map((e) => {
@@ -122,6 +121,13 @@ export default function Graph() {
     }
   }, [graph])
 
+  function zoom(factor: number) {
+    const n = networkRef.current
+    if (n) n.moveTo({ scale: n.getScale() * factor, animation: { duration: 200, easingFunction: 'easeInOutQuad' } })
+  }
+  function fit() {
+    networkRef.current?.fit({ animation: { duration: 300, easingFunction: 'easeInOutQuad' } })
+  }
   function clearFocus() {
     networkRef.current?.unselectAll()
     setFocus(null)
@@ -140,77 +146,102 @@ export default function Graph() {
     URL.revokeObjectURL(url)
   }
 
-  const types = graph ? [...new Set(graph.nodes.map((n) => n.type))] : []
+  const types = graph ? [...new Set(graph.nodes.map((n) => n.type))].sort() : []
+  const empty = graph && graph.nodes.length === 0
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-slate-800">Knowledge Graph</h1>
-        <div className="flex gap-2">
-          <button onClick={load} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
-            Refresh
-          </button>
-          <button onClick={() => download('json')} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
-            Export JSON
-          </button>
-          <button onClick={() => download('graphml')} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
-            Export GraphML
-          </button>
+    <div className="flex h-full flex-col">
+      {/* Header */}
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3.5 md:px-6">
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-elevated text-accent">
+            <Waypoints size={18} />
+          </span>
+          <div>
+            <h1 className="font-display text-[17px] font-semibold text-ink">Knowledge Graph</h1>
+            {graph && !empty && (
+              <p className="font-mono text-[11px] text-faint">
+                {graph.nodes.length} entities · {graph.edges.length} relationships
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={load}><RefreshCw size={14} /> Refresh</Button>
+          <Button size="sm" onClick={() => download('json')}><Download size={14} /> JSON</Button>
+          <Button size="sm" onClick={() => download('graphml')}><Download size={14} /> GraphML</Button>
+        </div>
+      </header>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-
+      {/* Legend */}
       {types.length > 0 && (
-        <div className="flex flex-wrap gap-3 text-xs text-slate-500">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-border px-5 py-2.5 md:px-6">
           {types.map((t) => (
-            <span key={t} className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: TYPE_COLORS[t] ?? '#94a3b8' }} />
+            <span key={t} className="inline-flex items-center gap-1.5 text-[11px] text-muted">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: entityColor(t) }} />
               {t}
             </span>
           ))}
         </div>
       )}
 
-      {graph && graph.nodes.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-16 text-center text-sm text-slate-500">
-          No graph yet. Upload and process documents, then their entities and relationships appear here.
-        </div>
-      ) : (
-        <>
-          {graph && (
-            <p className="text-xs text-slate-400">
-              Click a node to highlight its links and list them on the right · scroll to zoom · drag to pan · bigger nodes are more connected
-            </p>
-          )}
-          <div className="relative">
-            <div ref={containerRef} className="h-[calc(100vh-13rem)] rounded-xl border border-slate-200 bg-white" />
+      {/* Canvas */}
+      <div className="relative min-h-0 flex-1">
+        {loading ? (
+          <div className="flex h-full items-center justify-center gap-3 text-sm text-muted"><Spinner /> Building graph…</div>
+        ) : error ? (
+          <div className="flex h-full items-center justify-center p-8">
+            <EmptyState icon={<Waypoints size={22} />} title="Couldn't load the graph" description={error}
+              action={<Button variant="primary" onClick={load}>Retry</Button>} />
+          </div>
+        ) : empty ? (
+          <div className="flex h-full items-center justify-center p-8">
+            <EmptyState icon={<Waypoints size={22} />} title="No graph yet"
+              description="Upload and process documents — their entities and relationships will appear here as an explorable graph." />
+          </div>
+        ) : (
+          <>
+            <div ref={containerRef} className="grid-dots absolute inset-0 bg-surface" />
 
+            {/* Zoom controls */}
+            <div className="absolute bottom-4 left-4 flex flex-col overflow-hidden rounded-lg border border-border bg-panel/90 backdrop-blur">
+              <ZoomBtn onClick={() => zoom(1.3)} title="Zoom in"><Plus size={15} /></ZoomBtn>
+              <div className="h-px bg-border" />
+              <ZoomBtn onClick={() => zoom(0.75)} title="Zoom out"><Minus size={15} /></ZoomBtn>
+              <div className="h-px bg-border" />
+              <ZoomBtn onClick={fit} title="Fit to view"><Maximize2 size={14} /></ZoomBtn>
+            </div>
+
+            <p className="pointer-events-none absolute bottom-4 right-4 font-mono text-[10px] text-faint">
+              click a node to inspect · scroll to zoom · drag to pan
+            </p>
+
+            {/* Inspector */}
             {focus && (
-              <div className="absolute right-4 top-4 flex max-h-[calc(100%-2rem)] w-72 flex-col rounded-xl border border-slate-200 bg-white/95 shadow-lg backdrop-blur">
-                <div className="flex items-start justify-between gap-2 border-b border-slate-100 p-4">
-                  <div>
-                    <div className="font-semibold text-slate-800">{focus.name}</div>
-                    <span className="mt-1 inline-flex items-center gap-1.5 text-xs text-slate-500">
-                      <span className="h-2 w-2 rounded-full" style={{ background: TYPE_COLORS[focus.type] ?? '#94a3b8' }} />
-                      {focus.type}
-                    </span>
+              <div className="absolute right-4 top-4 flex max-h-[calc(100%-2rem)] w-72 flex-col rounded-xl border border-border bg-panel/95 shadow-2xl backdrop-blur rise">
+                <div className="flex items-start justify-between gap-2 border-b border-border p-4">
+                  <div className="flex items-start gap-2.5">
+                    <span className="mt-0.5 h-3 w-3 shrink-0 rounded-full" style={{ background: entityColor(focus.type) }} />
+                    <div>
+                      <div className="font-display font-semibold leading-tight text-ink">{focus.name}</div>
+                      <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wider" style={{ color: entityColor(focus.type) }}>
+                        {focus.type}
+                      </div>
+                    </div>
                   </div>
-                  <button onClick={clearFocus} className="text-slate-400 hover:text-slate-700" aria-label="Close">✕</button>
+                  <IconButton onClick={clearFocus}><X size={15} /></IconButton>
                 </div>
                 <div className="overflow-y-auto p-4">
-                  <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
-                    {focus.rels.length} relationship{focus.rels.length === 1 ? '' : 's'}
-                  </div>
+                  <SectionLabel>{focus.rels.length} relationship{focus.rels.length === 1 ? '' : 's'}</SectionLabel>
                   {focus.rels.length === 0 ? (
-                    <p className="text-sm text-slate-400">No relationships extracted for this entity.</p>
+                    <p className="mt-2 text-sm text-faint">No relationships extracted.</p>
                   ) : (
-                    <ul className="space-y-1.5">
+                    <ul className="mt-2 space-y-1">
                       {focus.rels.map((r, i) => (
-                        <li key={i} className="flex items-baseline gap-1.5 text-sm">
-                          <span className="text-slate-400">{r.out ? '→' : '←'}</span>
-                          <span className="font-medium text-indigo-600">{r.type}</span>
-                          <span className="text-slate-700">{r.other}</span>
+                        <li key={i} className="flex items-baseline gap-1.5 rounded-md px-1.5 py-1 text-[13px] hover:bg-hover">
+                          <span className="text-faint">{r.out ? '→' : '←'}</span>
+                          <span className="font-medium text-accent">{r.type}</span>
+                          <span className="min-w-0 truncate text-ink">{r.other}</span>
                         </li>
                       ))}
                     </ul>
@@ -218,9 +249,21 @@ export default function Graph() {
                 </div>
               </div>
             )}
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>
+  )
+}
+
+function ZoomBtn({ onClick, title, children }: { onClick: () => void; title: string; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className="flex h-8 w-8 items-center justify-center text-muted transition-colors hover:bg-hover hover:text-ink"
+    >
+      {children}
+    </button>
   )
 }
