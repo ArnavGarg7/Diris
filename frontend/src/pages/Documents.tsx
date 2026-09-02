@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { api } from '../api'
 import StatusBadge from '../components/StatusBadge'
-import { Button, EmptyState, IconButton, PageHeader, Panel, Spinner } from '../components/ui'
+import { Button, EmptyState, IconButton, Page, PageHeader, Panel, Spinner } from '../components/ui'
 import { fmtDate, formatBytes, isTerminal, type ChunkOut, type DocumentOut, type EntityOut } from '../types'
 
 const FORMATS = ['PDF', 'DOCX', 'TXT', 'MD', 'HTML']
@@ -125,7 +125,7 @@ export default function Documents() {
   }
 
   return (
-    <>
+    <Page>
       <PageHeader
         title="Documents"
         subtitle="Ingest sources — DIRIS extracts chunks, entities, and relationships into your knowledge graph."
@@ -265,7 +265,7 @@ export default function Documents() {
       </div>
 
       {chunksFor && <ChunksModal doc={chunksFor} onClose={() => setChunksFor(null)} />}
-    </>
+    </Page>
   )
 }
 
