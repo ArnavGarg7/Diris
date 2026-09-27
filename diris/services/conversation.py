@@ -25,10 +25,18 @@ def respond(
     classify English far more reliably); the grounded answer is still written in the
     user's own language, anchored to the original question.
     """
-    lang = detect_language(question)
-    route_input = question if lang == "en" else translate_to_english(question)
+    indian_greetings = ("namaste", "namaskar", "namaskaram", "pranam", "pranaam", "sat sri akal", "adaab", "vanakkam")
+    q_clean = question.strip().lower()
 
-    route = route_message(history, route_input)
+    if any(q_clean.startswith(g) for g in indian_greetings):
+        route_input = question
+    else:
+        lang = detect_language(question)
+        route_input = question if lang == "en" else translate_to_english(question)
+
+    route = route_message(
+        history, route_input, original_message=question, answer_language=answer_language
+    )
     if route["category"] == CONVERSATIONAL and route.get("reply"):
         return Answer(
             answer=route["reply"], answered=True, confidence=1.0,

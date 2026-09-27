@@ -97,7 +97,12 @@ export function formatBytes(n: number): string {
 }
 
 export function fmtDate(iso: string): string {
-  const d = new Date(iso)
+  // The backend returns naive UTC strings without a timezone suffix (e.g.
+  // "2026-09-27T04:06:00"). Without "Z", browsers parse them as *local* time,
+  // making the displayed time 5h30m behind on IST machines. Appending "Z"
+  // forces correct UTC → local-time conversion.
+  const normalised = /[Z+\-]\d*$/.test(iso) ? iso : iso + 'Z'
+  const d = new Date(normalised)
   if (isNaN(d.getTime())) return '—'
   return (
     d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +

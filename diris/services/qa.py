@@ -18,10 +18,12 @@ from .retrieval import hybrid_search
 _SNIPPET_CHARS = 300
 
 QA_SYSTEM = persona() + (
-    "\n\nRIGHT NOW you are answering a question strictly from the user's documents. "
-    "Answer ONLY using the provided evidence (text chunks and knowledge-graph facts). "
-    "Never use outside knowledge. If the evidence does not contain the answer, say so "
-    "plainly and set answered=false. If the sources disagree, present BOTH viewpoints "
+    "\n\nRIGHT NOW you are answering a question from the user's documents and knowledge graph. "
+    "Synthesize your answer using the provided evidence (text chunks and knowledge-graph facts). "
+    "Use your analytical intelligence to interpret, compare, identify main characters, summarize themes, "
+    "and analyze tone or style from the writing and events in the evidence. "
+    "Stay faithful to the documents and do not invent fabricated facts, but DO synthesize, "
+    "explain, and answer naturally. If the sources disagree, present BOTH viewpoints "
     "with their citations instead of choosing one. Cite the chunk numbers you relied on."
 )
 
@@ -73,9 +75,17 @@ def answer_grounded(
     # Number the chunks so the model can cite them; map numbers back to ids.
     number_to_id: dict[int, int] = {}
     chunk_lines: list[str] = []
+    doc_cache: dict[int, str] = {}
     for i, r in enumerate(results, start=1):
         number_to_id[i] = r.chunk_id
-        chunk_lines.append(f"[{i}] {r.content}")
+        doc_name = ""
+        if r.document_id:
+            if r.document_id not in doc_cache:
+                doc = db.get(Document, r.document_id)
+                doc_cache[r.document_id] = doc.original_filename if doc else ""
+            doc_name = doc_cache[r.document_id]
+        doc_header = f"[{i}] (Document: {doc_name})" if doc_name else f"[{i}]"
+        chunk_lines.append(f"{doc_header}\n{r.content}")
 
     directive = answer_language or "the same language as the QUESTION above"
     prompt = _build_prompt(user_message, chunk_lines, graph_facts, directive)
@@ -117,18 +127,45 @@ def _build_citation(db, chunk_id: int, result_by_id) -> Citation | None:
     )
 
 
-def _graph_facts(db, user: User, question: str, max_facts: int = 20) -> list[str]:
-    """Relationship facts around entities named in the question (enables multi-hop)."""
-    try:
-        seeds = get_entity_index().query(question, top_k=3, where={"user_id": user.id})
-    except Exception:  # noqa: BLE001
-        return []
-    entity_repo = EntityRepository(db)
-    rel_repo = RelationshipRepository(db)
+def _graph_facts(db, user: User, question: str, max_facts: int = 25) -> list[str]:
+    """Relationship facts around entities named in the question (enables multi-hop).
+    Also includes prominent entities and relationships across the user's documents
+    so global/character/comparative questions are grounded with high-level context."""
+    from sqlalchemy import func, select
+    from ..db.models import Entity, EntityMention, Relationship
+
     facts: list[str] = []
     seen: set[tuple] = set()
-    for seed in seeds:
-        for rel in rel_repo.for_entity(seed.chunk_id):  # entity index keys by entity id
+    entity_repo = EntityRepository(db)
+    rel_repo = RelationshipRepository(db)
+
+    # 1. Include prominent figures/entities for each user document
+    try:
+        user_docs = db.execute(select(Document).where(Document.user_id == user.id)).scalars().all()
+        for doc in user_docs:
+            top_ents = db.execute(
+                select(Entity.canonical_name, Entity.type, func.count(EntityMention.id).label("cnt"))
+                .join(EntityMention, EntityMention.entity_id == Entity.id)
+                .where(EntityMention.document_id == doc.id)
+                .group_by(Entity.id)
+                .order_by(func.count(EntityMention.id).desc())
+                .limit(7)
+            ).all()
+            if top_ents:
+                ent_desc = ", ".join(f"{name} ({t}, {cnt} mentions)" for name, t, cnt in top_ents)
+                facts.append(f"Document '{doc.original_filename}': Prominent entities: {ent_desc}")
+    except Exception:  # noqa: BLE001
+        pass
+
+    # 2. Targeted entity facts based on query seeds
+    try:
+        seeds = get_entity_index().query(question, top_k=5, where={"user_id": user.id})
+    except Exception:  # noqa: BLE001
+        seeds = []
+
+    seed_ids = [s.chunk_id for s in seeds]
+    for eid in seed_ids:
+        for rel in rel_repo.for_entity(eid):
             key = (rel.source_entity_id, rel.type, rel.target_entity_id)
             if key in seen:
                 continue
@@ -139,6 +176,30 @@ def _graph_facts(db, user: User, question: str, max_facts: int = 20) -> list[str
                 facts.append(f"{src.canonical_name} --{rel.type}--> {tgt.canonical_name}")
             if len(facts) >= max_facts:
                 return facts
+
+    # 3. High-confidence relationships across user's entities if facts are sparse
+    if len(facts) < max_facts:
+        try:
+            top_rels = db.execute(
+                select(Relationship)
+                .where(Relationship.user_id == user.id)
+                .order_by(Relationship.confidence.desc())
+                .limit(max_facts - len(facts))
+            ).scalars().all()
+            for rel in top_rels:
+                key = (rel.source_entity_id, rel.type, rel.target_entity_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                src = entity_repo.get(rel.source_entity_id)
+                tgt = entity_repo.get(rel.target_entity_id)
+                if src and tgt:
+                    facts.append(f"{src.canonical_name} --{rel.type}--> {tgt.canonical_name}")
+                if len(facts) >= max_facts:
+                    break
+        except Exception:  # noqa: BLE001
+            pass
+
     return facts
 
 
@@ -148,7 +209,7 @@ def _build_prompt(
 ) -> str:
     facts_block = "\n".join(graph_facts) if graph_facts else "(none)"
     chunks_block = "\n\n".join(chunk_lines)
-    return f"""Answer the question using ONLY the evidence below.
+    return f"""Answer the question using the evidence below (text chunks and knowledge-graph facts).
 
 Write the "answer" field in {answer_language}. The evidence and citations stay
 in their original language.
@@ -171,9 +232,10 @@ Return ONLY a JSON object of this exact shape:
 }}
 
 Rules:
-- Use ONLY the evidence above. Do NOT use outside knowledge.
-- If the evidence does not contain the answer, set answered=false, keep confidence low,
-  and say the documents don't cover it.
-- If two sources CONTRADICT each other, present BOTH conflicting facts in the answer,
-  each attributed to its own [chunk number], instead of picking one.
-- Cite the [number] of every chunk you relied on."""
+- Synthesize your answer intelligently from the evidence and knowledge-graph facts above.
+- If the question asks about characters or people, identify the main and prominent figures, their roles, and connections from the facts and text.
+- If the question asks about tone, style, atmosphere, or comparing documents, analyze the writing style, genre, setting, and mood shown in each document's chunks.
+- Use your analytical intelligence to explain and summarize. Do not invent fabricated facts, but do not artificially refuse when the evidence gives you clear context.
+- Only if the evidence truly provides zero relevant context or connection to the topic, state that the documents do not cover it and set answered=false.
+- If two sources CONTRADICT each other, present BOTH conflicting facts in the answer, each attributed to its own [chunk number].
+- Cite the [number] of every chunk you relied on in the "citations" array."""

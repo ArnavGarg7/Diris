@@ -90,8 +90,26 @@ def hybrid_search(db, user: User, query: str, top_k: int = 6) -> list[HybridResu
     }
     ranked, scores, sources = rrf_fuse(lists)
 
+    # Balance chunks across documents when multiple documents are retrieved,
+    # ensuring comparative questions (e.g. "compare both books") get evidence from each.
+    doc_to_cids: dict[int, list[int]] = {}
+    for cid in ranked:
+        chunk = db.get(Chunk, cid)
+        if chunk is not None:
+            doc_to_cids.setdefault(chunk.document_id, []).append(cid)
+
+    selected_cids: list[int] = []
+    if len(doc_to_cids) > 1 and top_k > 1:
+        # Round-robin pick from each document up to top_k
+        while len(selected_cids) < top_k and any(doc_to_cids.values()):
+            for did in list(doc_to_cids.keys()):
+                if doc_to_cids[did] and len(selected_cids) < top_k:
+                    selected_cids.append(doc_to_cids[did].pop(0))
+    else:
+        selected_cids = ranked[:top_k]
+
     results: list[HybridResult] = []
-    for cid in ranked[:top_k]:
+    for cid in selected_cids:
         chunk = db.get(Chunk, cid)
         if chunk is None:
             continue
@@ -100,8 +118,8 @@ def hybrid_search(db, user: User, query: str, top_k: int = 6) -> list[HybridResu
                 chunk_id=cid,
                 document_id=chunk.document_id,
                 content=chunk.content,
-                score=scores[cid],
-                sources=sorted(sources[cid]),
+                score=scores.get(cid, 0.0),
+                sources=sorted(sources.get(cid, [])),
             )
         )
     return results

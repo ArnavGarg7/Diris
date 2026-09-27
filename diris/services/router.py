@@ -18,13 +18,16 @@ CONVERSATIONAL = "conversational"
 DOCUMENT_QUERY = "document_query"
 
 
-def route_message(history: str, message: str) -> dict:
+def route_message(
+    history: str, message: str, original_message: str | None = None,
+    answer_language: str | None = None,
+) -> dict:
     """Return {category, query, reply}.
 
     category = 'document_query' -> `query` is a self-contained English question.
     category = 'conversational' -> `reply` is a warm reply in the user's language.
     """
-    prompt = _build_prompt(history, message)
+    prompt = _build_prompt(history, message, original_message, answer_language)
     try:
         raw = get_llm().complete(prompt, system=persona())
     except Exception as exc:  # noqa: BLE001 — LLM unavailable
@@ -56,7 +59,12 @@ def _safe_parse(raw: str) -> dict | None:
         return None
 
 
-def _build_prompt(history: str, message: str) -> str:
+def _build_prompt(
+    history: str, message: str, original_message: str | None = None,
+    answer_language: str | None = None,
+) -> str:
+    orig = original_message or message
+    lang_directive = f"PREFERRED ANSWER LANGUAGE: {answer_language}\n" if answer_language else ""
     return f"""The user may write in ANY language (English, Hindi, Spanish, Arabic, French, …).
 ALWAYS understand the message — NEVER reply that you cannot understand it. If it is a question,
 translate it into clear English for "query". Reply with ONE JSON object:
@@ -69,25 +77,30 @@ Choose the category:
   follow-up that refines an earlier question. Route it here EVEN IF it looks like general
   knowledge — you do NOT know what the user's documents contain, and the system will honestly
   say "not in your documents" if the answer isn't there. Set "query" to a COMPLETE,
-  SELF-CONTAINED ENGLISH version of the question, resolving any references ("he", "that one",
-  "those", "उनमें से") from the CONVERSATION below. Set "reply" to null.
+  SELF-CONTAINED ENGLISH version of the question, resolving any references from the CONVERSATION below.
+  Set "reply" to null.
 
 • "conversational" — ONLY pure social messages or questions about YOU (the assistant):
   greetings, thanks, goodbye, small talk, "who are you", "what can you do", "help". These do
   NOT ask for information from documents. Set "query" to null and write "reply" in the SAME
-  language as the user — warm and brief, inviting them to ask about their documents.
+  language or cultural tone as the user (or in the PREFERRED ANSWER LANGUAGE if specified) — warm and brief,
+  inviting them to ask about their documents.
 
 If unsure, choose "document_query" — never deflect a genuine question.
 
 RULES:
-- Write "reply" in the EXACT same language as the user's message. Default to English for short
-  or ambiguous greetings ("hi", "ok", "thanks").
+- If the user uses an Indian greeting (e.g. "Namaste", "नमस्ते", "Pranam", "Sat Sri Akal", "Adaab") or the PREFERRED ANSWER LANGUAGE is Hindi, reply with a warm, respectful greeting (e.g., in Hindi "नमस्ते! मैं आपके दस्तावेज़ों के विश्लेषण में आपकी क्या सहायता कर सकता हूँ?" or "Namaste! How can I help you explore your documents today?").
+- If a PREFERRED ANSWER LANGUAGE is specified, write "reply" in that language.
+- Otherwise write "reply" in the EXACT same language as the user's original message.
 - Output ONLY the JSON object. No markdown, no extra text.
 
-CONVERSATION SO FAR:
+{lang_directive}CONVERSATION SO FAR:
 {history or "(none)"}
 
-USER MESSAGE:
+USER ORIGINAL MESSAGE:
+"{orig}"
+
+TRANSLATED / ROUTING INPUT:
 "{message}"
 
 JSON:"""

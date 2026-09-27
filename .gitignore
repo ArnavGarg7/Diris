@@ -40,3 +40,6 @@ htmlcov/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Local logs and session docs
+Claude_Code_Session_Log_DIRIS.docx
