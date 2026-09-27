@@ -20,6 +20,8 @@ __pycache__/
 .eggs/
 build/
 dist/
+!frontend/dist
+!frontend/dist/**
 
 # --- Virtual environments ---
 .venv/
