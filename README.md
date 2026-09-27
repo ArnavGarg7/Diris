@@ -228,10 +228,4 @@ python -m eval.retrieval
 python -m eval.hallucination
 ```
 
----
 
-## 👤 Author
-
-Developed with ❤️ by **[Arnav Garg](https://github.com/ArnavGarg7)**.
-
-*For feedback, discussions, or contributions, feel free to open an issue or pull request!*
