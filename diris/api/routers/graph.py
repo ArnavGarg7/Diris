@@ -32,7 +32,7 @@ def _safe(fn):
 
 @router.get("", response_model=GraphOut)
 def full_graph(
-    limit: int = Query(200, ge=1, le=1000),
+    limit: int = Query(1000, ge=1, le=5000),
     current_user: User = Depends(get_current_user),
 ) -> GraphOut:
     return _graph_out(_safe(lambda: get_full_graph(current_user, limit=limit)))

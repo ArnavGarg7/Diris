@@ -16,8 +16,16 @@
   <img src="https://img.shields.io/badge/Neo4j-5.x-008CC1?logo=neo4j&logoColor=white" alt="Neo4j" />
   <img src="https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white" alt="MySQL" />
   <img src="https://img.shields.io/badge/ChromaDB-Vector_Store-FF6F00" alt="ChromaDB" />
+  <a href="https://diris-arnav.duckdns.org"><img src="https://img.shields.io/badge/Live_Demo-diris--arnav.duckdns.org-00C2FF?logo=googlechrome&logoColor=white" alt="Live Demo" /></a>
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" />
 </p>
+
+---
+
+## 🌐 Live Deployment
+
+> 🚀 **Live Demo:** [https://diris-arnav.duckdns.org](https://diris-arnav.duckdns.org)  
+> Hosted on Oracle Cloud Infrastructure (OCI Ampere A1, Ubuntu 22.04) with automated TLS via Caddy.
 
 ---
 
@@ -203,7 +211,8 @@ npm run dev
 
 | Service | Address | Description |
 |---|---|---|
-| **Web Dashboard** | [http://localhost:5173](http://localhost:5173) | Primary React frontend |
+| **Production Web App** | [https://diris-arnav.duckdns.org](https://diris-arnav.duckdns.org) | Live hosted application (Cloud) |
+| **Web Dashboard (Local)** | [http://localhost:5173](http://localhost:5173) | Primary React frontend (Dev) |
 | **API Documentation** | [http://127.0.0.1:8081/docs](http://127.0.0.1:8081/docs) | Interactive Swagger UI |
 | **Neo4j Browser** | [http://localhost:7474](http://localhost:7474) | Database visualizer (`neo4j` / `dirispassword`) |
 | **Health Check** | [http://127.0.0.1:8081/health](http://127.0.0.1:8081/health) | System health probe |

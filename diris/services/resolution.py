@@ -24,6 +24,46 @@ def normalize(name: str) -> str:
     return re.sub(r"\s+", " ", name.strip().lower())
 
 
+# Map common LLM-invented type variants back to the canonical schema types so
+# cross-document entity resolution isn't broken by inconsistent type naming.
+_TYPE_MAP: dict[str, str] = {
+    "character": "PERSON",
+    "fictional character": "PERSON",
+    "fictional_character": "PERSON",
+    "human": "PERSON",
+    "people": "PERSON",
+    "author": "PERSON",
+    "org": "ORGANIZATION",
+    "organisation": "ORGANIZATION",
+    "company": "ORGANIZATION",
+    "place": "LOCATION",
+    "city": "LOCATION",
+    "country": "LOCATION",
+    "region": "LOCATION",
+    "book": "WORK",
+    "novel": "WORK",
+    "film": "WORK",
+    "movie": "WORK",
+    "article": "WORK",
+    "idea": "CONCEPT",
+    "theme": "CONCEPT",
+    "subject": "TOPIC",
+    "tool": "TECHNOLOGY",
+}
+
+
+def _canonical_type(raw: str) -> str:
+    """Return the canonical schema entity type for a raw LLM-generated type string."""
+    upper = raw.strip().upper()
+    # If it's already a canonical type, return as-is
+    from ..extraction.schema import ENTITY_TYPES
+    if upper in ENTITY_TYPES:
+        return upper
+    # Try mapping the lowercased raw string
+    return _TYPE_MAP.get(raw.strip().lower(), upper) if raw.strip().lower() in _TYPE_MAP else upper
+
+
+
 class EntityResolver:
     def __init__(
         self,
@@ -47,18 +87,21 @@ class EntityResolver:
         document_id: int,
     ) -> Entity:
         normalized = normalize(name)
+        # Normalize the entity type so different LLM wordings for the same
+        # semantic type don't prevent cross-document entity merging.
+        canon_type = _canonical_type(type)
 
         existing = self.repo.find_by_normalized(user_id, normalized)
         if existing is None:
             existing = self.repo.find_by_alias(user_id, normalized)
         if existing is None:
-            existing = self._match_by_embedding(user_id, name, type)
+            existing = self._match_by_embedding(user_id, name, canon_type)
 
         if existing is not None:
             self._merge(existing, name, description, chunk_id, document_id)
             return existing
 
-        return self._create(user_id, name, normalized, type, description, chunk_id, document_id)
+        return self._create(user_id, name, normalized, canon_type, description, chunk_id, document_id)
 
     # -- internals ---------------------------------------------------------
     def _match_by_embedding(self, user_id: int, name: str, type: str) -> Entity | None:
@@ -90,10 +133,13 @@ class EntityResolver:
         )
         self.repo.add_mention(entity.id, chunk_id, document_id, surface_text=name)
         self.db.commit()
-        # Index the entity name so future mentions can resolve to it by similarity.
-        self.index.upsert(
-            ids=[str(entity.id)],
-            texts=[entity.canonical_name],
-            metadatas=[{"user_id": user_id, "type": type, "entity_id": entity.id}],
-        )
+        # Index the entity name so future mentions can resolve to it by similarity (best-effort).
+        try:
+            self.index.upsert(
+                ids=[str(entity.id)],
+                texts=[entity.canonical_name],
+                metadatas=[{"user_id": user_id, "type": type, "entity_id": entity.id}],
+            )
+        except Exception:
+            pass
         return entity

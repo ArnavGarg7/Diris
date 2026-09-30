@@ -100,27 +100,45 @@ class Neo4jGraphStore(GraphStore):
                 )
             return {"nodes": list(nodes.values()), "edges": edges}
 
-    def full_graph(self, user_id: int, limit: int = 200) -> dict:
+    def full_graph(self, user_id: int, limit: int = 1000) -> dict:
         with self.driver.session() as s:
-            node_recs = s.run(
-                "MATCH (e:Entity {user_id: $uid}) "
-                "RETURN e.entity_id AS id, e.name AS name, e.type AS type LIMIT $lim",
-                uid=user_id, lim=limit,
-            )
-            nodes = [{"entity_id": r["id"], "name": r["name"], "type": r["type"]} for r in node_recs]
-            node_ids = {n["entity_id"] for n in nodes}
+            # 1. Fetch relationships first so interconnected networks across multiple
+            # documents are guaranteed to be represented with their endpoints.
             edge_recs = s.run(
-                "MATCH (a:Entity {user_id: $uid})-[r:REL]->(b:Entity {user_id: $uid}) "
-                "RETURN a.entity_id AS s, b.entity_id AS t, r.type AS type, r.confidence AS confidence "
-                "LIMIT $lim",
+                """
+                MATCH (a:Entity {user_id: $uid})-[r:REL]->(b:Entity {user_id: $uid})
+                RETURN a.entity_id AS s, a.name AS sn, a.type AS st,
+                       b.entity_id AS t, b.name AS tn, b.type AS tt,
+                       r.type AS type, r.confidence AS confidence
+                LIMIT $lim
+                """,
                 uid=user_id, lim=limit,
             )
-            edges = [
-                {"source": r["s"], "target": r["t"], "type": r["type"], "confidence": r["confidence"]}
-                for r in edge_recs
-                if r["s"] in node_ids and r["t"] in node_ids
-            ]
-            return {"nodes": nodes, "edges": edges}
+            nodes: dict[int, dict] = {}
+            edges: list[dict] = []
+            for r in edge_recs:
+                nodes[r["s"]] = {"entity_id": r["s"], "name": r["sn"], "type": r["st"]}
+                nodes[r["t"]] = {"entity_id": r["t"], "name": r["tn"], "type": r["tt"]}
+                edges.append(
+                    {"source": r["s"], "target": r["t"], "type": r["type"], "confidence": r["confidence"]}
+                )
+
+            # 2. Fill remaining headroom with any unlinked/singleton entities
+            if len(nodes) < limit:
+                remain = limit - len(nodes)
+                node_recs = s.run(
+                    """
+                    MATCH (e:Entity {user_id: $uid})
+                    WHERE NOT e.entity_id IN $existing
+                    RETURN e.entity_id AS id, e.name AS name, e.type AS type
+                    LIMIT $lim
+                    """,
+                    uid=user_id, existing=list(nodes.keys()), lim=remain,
+                )
+                for r in node_recs:
+                    nodes[r["id"]] = {"entity_id": r["id"], "name": r["name"], "type": r["type"]}
+
+            return {"nodes": list(nodes.values()), "edges": edges}
 
     def shortest_path(self, user_id: int, source_id: int, target_id: int) -> dict:
         with self.driver.session() as s:

@@ -28,6 +28,16 @@ def project_document(db, document_id: int) -> dict[str, int]:
     for entity in entities:
         store.upsert_entity(entity.id, document.user_id, entity.canonical_name, entity.type)
 
+    # Guarantee all relationship endpoint entities exist in Neo4j before linking
+    endpoint_ids = {r.source_entity_id for r in relationships} | {r.target_entity_id for r in relationships}
+    missing_ids = endpoint_ids - {e.id for e in entities}
+    if missing_ids:
+        ent_repo = EntityRepository(db)
+        for mid in missing_ids:
+            ent = ent_repo.get(mid)
+            if ent is not None:
+                store.upsert_entity(ent.id, document.user_id, ent.canonical_name, ent.type)
+
     for rel in relationships:
         store.upsert_relationship(
             rel_id=rel.id, user_id=document.user_id,
